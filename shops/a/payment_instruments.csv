@@ -1,0 +1,3 @@
+id,type,brand,last_digits,token,handler_id
+instr_1,card,Visa,4242,success_token,mock_payment_handler
+instr_fail,card,Visa,0000,fail_token,mock_payment_handler

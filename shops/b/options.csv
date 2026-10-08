@@ -1,0 +1,9 @@
+id,deal_id,title,description,includes,price,list_price
+beer_tasting_two_4,beer_tasting_two,4 beers,A first taste of Czech craft beer.,Four 0.2 l craft beers each|Tasting notes from the brewer,3500,5600
+beer_tasting_two_6,beer_tasting_two,6 beers,"The full flight, with something to eat.",Six 0.2 l craft beers each|Pretzels and cheese|Tasting notes from the brewer,4900,7800
+beer_tasting_two_dinner,beer_tasting_two,6 beers and dinner,"The full flight, then dinner.",Six 0.2 l craft beers each|Two-course Czech dinner for two,7900,12000
+river_dinner_cruise_std,river_dinner_cruise,Standard seat,Dinner on the river.,Two-hour cruise|Three-course dinner|Welcome drink,8900,13500
+river_dinner_cruise_window,river_dinner_cruise,Window table,"Dinner by the window, with wine.",Two-hour cruise|Three-course dinner|Welcome drink|Guaranteed window table|Bottle of wine,11500,17000
+escape_room_4,escape_room,Up to 4 players,One game for a small group.,One 60-minute game|Up to 4 players|Briefing by the game master,6900,9900
+escape_room_6,escape_room,Up to 6 players,One game for a bigger group.,One 60-minute game|Up to 6 players|Briefing by the game master,8900,13500
+baking_class_90,baking_class,90-minute class,"Bake it, then eat it.",Hands-on class|All ingredients|Your own trdelnik to take home,3900,6000

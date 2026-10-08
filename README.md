@@ -6,10 +6,24 @@ sample server with voucher selling added, started with its own catalogue; the
 agent (`agent/`) only talks to the shops over UCP. `PLAN.md` says what is
 left and why.
 
+| Shop | Local | Sells |
+|---|---|---|
+| A, Dusk Deals | :8181 | Wellness, refundable, 10% back in coins |
+| B, Praha Pass | :8182 | Food and activities, 5% back |
+| C, Dawn Saver | :8183 | Wellness, cheaper, non-refundable, no coins |
+
 ## Run
 
-Tests: `cd rest/python/server && uv run pytest` (245). The shop ships as a
-container (`docker build rest/python/server`); `SHOP`, `SIMULATION_SECRET`
+Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
+
+```shell
+scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
+python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking fee
+scripts/shops.sh stop
+```
+
+Tests: `cd rest/python/server && uv run pytest` (245). Each shop also ships
+as a container (`docker build rest/python/server`); `SHOP`, `SIMULATION_SECRET`
 and the other knobs are listed at the top of `docker-entrypoint.sh`.
 
 ## What a shop sells
@@ -82,3 +96,7 @@ the merchant; the agent's decisions until a model is connected.
   `payment_rail.py`, `ledger.py`, `account_service.py`, `coin_service.py`;
   `routes/catalog.py`, `voucher.py`, `wallet.py`; `approval_checks.py` (stub
   for the buyer-approval checks).
+- `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
+  `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
+  look, `images/` (credits in `shops/CREDITS.md`).
+- `scripts/`: start and stop the shops; the smoke test.

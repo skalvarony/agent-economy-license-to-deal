@@ -1,0 +1,11 @@
+{
+  "name": "Praha Pass",
+  "tagline": "Food and things to do in Prague",
+  "city": "Prague",
+  "accent": "#c2410c",
+  "hero": "Eat, drink and play in Prague",
+  "hero_sub": "Tastings, river cruises and things to do with friends, picked by locals.",
+  "promo_code": "PRAHA15",
+  "font": "bricolage",
+  "coins_back_percent": 5
+}

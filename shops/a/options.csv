@@ -1,0 +1,11 @@
+id,deal_id,title,description,includes,price,list_price
+spa_day_two_2h,spa_day_two,2 hours,Two hours in the spa for two.,Sauna and steam room|Indoor pool|Towels and slippers,6900,12000
+spa_day_two_3h,spa_day_two,3 hours,"Three hours in the spa, with a massage each.",Sauna and steam room|Indoor pool|30-minute massage per person|Towels and slippers,9900,18000
+spa_day_two_day,spa_day_two,Full day,"The whole day, with a longer massage and lunch.","All-day spa access|60-minute massage per person|Lunch for two|Robes, towels and slippers",13900,26000
+sauna_evening_two_60,sauna_evening_two,60 minutes,One hour in a private sauna cabin.,Private Finnish sauna|Cold plunge|Towels,5900,9000
+sauna_evening_two_90,sauna_evening_two,90 minutes,"Ninety minutes, with tea to cool down.",Private Finnish sauna|Cold plunge|Towels|Herbal tea,7900,12000
+sauna_evening_two_120,sauna_evening_two,120 minutes,"Two hours, with a salt and honey scrub.",Private Finnish sauna|Cold plunge|Towels|Herbal tea|Salt and honey scrub,9500,15000
+float_session_60,float_session,60 minutes,An hour floating in a private room.,Private float room|Shower and toiletries|Earplugs,5900,8500
+float_session_90,float_session,90 minutes,"A longer float, with tea afterwards.",Private float room|Shower and toiletries|Earplugs|Tea in the lounge,7900,12000
+thai_massage_60,thai_massage,60 minutes,Full-body traditional Thai massage.,Traditional Thai massage|Herbal tea,8500,12000
+thai_massage_90,thai_massage,90 minutes,A longer session with a hot herbal compress.,Traditional Thai massage|Hot herbal compress|Herbal tea,11500,16000

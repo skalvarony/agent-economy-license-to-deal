@@ -1,0 +1,6 @@
+id,deal_id,title,description,includes,price,list_price
+spa_day_two_saver_2h,spa_day_two_saver,2 hours,Two hours of sauna and pool.,Sauna|Pool,4900,12000
+spa_day_two_saver_3h,spa_day_two_saver,3 hours,"Three hours, with the hot tub.",Sauna|Pool|Hot tub,7900,18000
+hot_stone_massage_45,hot_stone_massage,45 minutes,A short hot stone massage.,Hot stone massage|Aromatherapy oil,4900,9000
+hot_stone_massage_60,hot_stone_massage,60 minutes,A full hour of hot stone massage.,Hot stone massage|Aromatherapy oil,6500,12000
+beer_spa_two_60,beer_spa_two,60 minutes,An hour in a beer bath for two.,Private beer bath for two|Unlimited beer|Rest on a straw bed,8500,16000
