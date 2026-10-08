@@ -1,0 +1,27 @@
+.run/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.db
+*.db-shm
+*.db-wal
+*.log
+node_modules/
+.e2e/
+deploy/.env
+deploy/.env.local
+
+# Agent skills installed with `npx skills` (HyperFrames etc.): local tooling, not the product
+.agents/
+.claude/skills/
+skills-lock.json
+
+# Video: renders, frames and encoded takes are rebuilt from the scripts
+docs/video/renders/
+docs/video/record/out/
+docs/video/project/assets/*.mp4
+docs/video/project/assets/*.markers.json
+docs/video/project/node_modules/
+docs/video/project/.hyperframes/
+docs/video/project/out/
