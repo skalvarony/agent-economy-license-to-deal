@@ -71,6 +71,8 @@ class FakeShop:
     self.booked = {}  # starts_at -> units taken, over completed checkouts
     self.full = set()  # starts_at the shop reports as full
     self.bookings = []  # (checkout id, starts_at) of each booking made
+    self.moves = []  # (order id, starts_at) of each visit moved
+    self.cancelled = []  # order ids cancelled for a refund
 
   def for_people(self, url):
     return url
@@ -201,12 +203,32 @@ class FakeShop:
     self.told.append(context)
     return {"order": {"id": f"order_{checkout_id}"}}
 
-  async def order(self, order_id):
+  def _bought(self, order_id):
     done = [c for c in self.completed if f"order_{c[0]}" == order_id]
     if not done:
       raise ShopError(403, "forbidden", "Not your order")
-    checkout_id, charged = done[-1]
+    return done[-1]
+
+  async def reschedule(self, order_id, starts_at):
+    checkout_id, _ = self._bought(order_id)
+    if starts_at in self.full:
+      raise ShopError(409, "SLOT_UNAVAILABLE", f"Full at {starts_at}.")
+    self.checkouts[checkout_id]["starts_at"] = starts_at
+    self.moves.append((order_id, starts_at))
+    return await self.order(order_id)
+
+  async def cancel(self, order_id):
+    checkout_id, _ = self._bought(order_id)
+    if self.checkouts[checkout_id].get("refunded"):
+      raise ShopError(409, "VOUCHER_STATE_CONFLICT", "Already refunded.")
+    self.checkouts[checkout_id]["refunded"] = True
+    self.cancelled.append(order_id)
+    return await self.order(order_id)
+
+  async def order(self, order_id):
+    checkout_id, charged = self._bought(order_id)
     stored = self.checkouts[checkout_id]
+    refunded = stored.get("refunded", False)
     return {
       "id": order_id,
       "placed_at": "2026-10-03T15:00:00+00:00",
@@ -217,12 +239,23 @@ class FakeShop:
       "line_items": [
         {
           "item": {"id": stored["item"], "title": stored["title"]},
-          "voucher": {"codes": ["TST-0001"], "status": "issued"},
-          "redemption": {"status": "unredeemed"},
+          "voucher": {
+            "codes": ["TST-0001"],
+            "status": "refunded" if refunded else "issued",
+          },
+          "redemption": {
+            "status": "cancelled_by_shopper" if refunded else "unredeemed"
+          },
+          "cancellation": {"refundability": "refundable"},
           "service": self._service(stored, status="booked"),
         }
       ],
-      "payment": {"amount": charged, "coins": stored["coins"], "rail": "mock"},
+      "payment": {
+        "amount": charged,
+        "coins": stored["coins"],
+        "rail": "mock",
+        "status": "refunded" if refunded else "captured",
+      },
     }
 
 
@@ -361,6 +394,61 @@ def test_a_bookable_deal_is_not_proposed_without_a_slot(session, shops):
   answer = asyncio.run(session.propose_purchase("a", "sauna_60min"))
   assert answer["error"] == "booking_required"
   assert not shops[0].checkouts
+
+
+def test_the_person_moves_a_purchase_through_the_agent(session, shops):
+  run(session.say("a sauna evening for two, Saturday at 18:00"))
+  run(session.approve(proposal_of(session)["id"]))
+  events = run(session.say("move my sauna evening to Saturday at 19:00"))
+  assert shops[0].moves == [("order_co_1", "2026-10-10T19:00:00+02:00")]
+  assert events[-1]["text"] == (
+    "Done. Private Sauna Evening · 60min at Shop A is now booked for"
+    " Sat 10 Oct, 19:00."
+  )
+  rows = asyncio.run(session.list_purchases())
+  assert rows[0]["booking"]["starts_at"] == "2026-10-10T19:00:00+02:00"
+  # A full slot: the calendar shows it full, so nothing is asked of the shop.
+  shops[0].full.add("2026-10-10T20:00:00+02:00")
+  events = run(session.say("change it to Saturday at 20:00"))
+  assert "has no free slot at that time on Sat 10 Oct" in events[-1]["text"]
+  assert len(shops[0].moves) == 1
+  # A slot that fills up between the look and the move: the shop says no.
+  shops[0].full.add("2026-10-10T21:00:00+02:00")
+  shops[0].availability = lambda *a, **k: FakeShop.availability(FakeShop("a", "A", []), *a, **k)
+  events = run(session.say("change it to Saturday at 21:00"))
+  assert "wouldn't do it" in events[-1]["text"]
+  assert len(shops[0].moves) == 1
+
+
+def test_the_person_cancels_a_purchase_through_the_agent(session, shops):
+  run(session.say(REQUEST))
+  run(session.approve(proposal_of(session)["id"]))
+  events = run(session.say("cancel my spa day"))
+  assert shops[0].cancelled == ["order_co_1"]
+  assert events[-1]["text"] == (
+    "Done. I cancelled Spa Day for Two · 3h at Shop A: $59 goes back to"
+    " your card and 40 coins to your wallet."
+  )
+  rows = asyncio.run(session.list_purchases())
+  assert rows[0]["payment"] == "refunded" and not rows[0]["can_cancel"]
+  assert "cancelled Spa Day for Two · 3h for a refund" in " ".join(
+    session.history_words()
+  )
+  # Nothing left to cancel.
+  events = run(session.say("cancel it"))
+  assert "no purchase of yours that is still open" in events[-1]["text"]
+
+
+def test_a_change_names_the_purchase_when_several_are_open(session, shops):
+  run(session.say(REQUEST))
+  run(session.approve(proposal_of(session)["id"]))
+  run(session.say("a sauna evening for two, Saturday at 18:00"))
+  run(session.approve(proposal_of(session)["id"]))
+  events = run(session.say("cancel it"))
+  assert events[-1]["text"].startswith("Which purchase do you mean? You have:")
+  assert not shops[0].cancelled
+  run(session.say("cancel the sauna"))
+  assert shops[0].cancelled == ["order_co_2"]
 
 
 def test_money():
@@ -548,6 +636,9 @@ def test_the_brain_has_no_way_to_pay(session):
     "search_deals",
     "read_wallets",
     "check_availability",
+    "list_purchases",
+    "reschedule_purchase",
+    "cancel_purchase",
     "recall",
     "remember",
     "propose_purchase",
@@ -639,6 +730,9 @@ def test_model_proposes_through_the_tools_and_does_not_buy(shops, tmp_path):
     "search_deals",
     "read_wallets",
     "check_availability",
+    "list_purchases",
+    "reschedule_purchase",
+    "cancel_purchase",
     "recall",
     "remember",
     "propose_purchase",
@@ -858,6 +952,9 @@ def test_mcp_lists_the_tools_and_runs_them(session, shops, tmp_path):
     "search_deals",
     "read_wallets",
     "check_availability",
+    "list_purchases",
+    "reschedule_purchase",
+    "cancel_purchase",
     "recall",
     "remember",
     "propose_purchase",

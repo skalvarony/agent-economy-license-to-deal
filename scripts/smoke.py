@@ -176,6 +176,23 @@ def main():
         line["service"]["booking"]["status"] == "booked"
         and left_at("a", "spa_day_two", slot["starts_at"]) == places - 1,
         line["service"].get("booking"))
+
+  # The agent that bought moves the visit to the next slot, and back.
+  _, listed = call("a", "GET", "/deals/spa_day_two/availability?days=14")
+  other = next((s for d in listed["days"] for s in d["slots"]
+                if s["left"] and s["starts_at"] != slot["starts_at"]), None)
+  status, moved = call("a", "PUT", f"/orders/{order_id}/booking",
+                       {"starts_at": other["starts_at"]})
+  check("shop a: the agent moves the visit to another open slot",
+        status == 200
+        and moved["line_items"][0]["service"]["booking"]["starts_at"]
+        == other["starts_at"]
+        and left_at("a", "spa_day_two", slot["starts_at"]) == places, moved)
+  status, moved = call("a", "PUT", f"/orders/{order_id}/booking",
+                       {"starts_at": slot["starts_at"]})
+  check("shop a: and back to the first slot",
+        status == 200 and left_at("a", "spa_day_two", slot["starts_at"])
+        == places - 1, status)
   sold = pool("a", "spa_day_two_3h")
   check("shop a: the voucher's code came out of the option's pool",
         len(line["voucher"]["codes"]) == 1

@@ -69,6 +69,28 @@ TEXTS: dict[str, dict[str, str]] = {
     "es": "{shop} dice que esa hora se acaba de llenar: {message} No se ha"
     " pagado nada. Dime otra hora y vuelvo a proponer.",
   },
+  "which_purchase": {
+    "en": "Which purchase do you mean? You have: {titles}.",
+    "es": "¿Qué compra dices? Tienes: {titles}.",
+  },
+  "no_live_purchase": {
+    "en": "I found no purchase of yours that is still open to change.",
+    "es": "No encuentro ninguna compra tuya que aún se pueda cambiar.",
+  },
+  "moved": {
+    "en": "Done. {title} at {shop} is now booked for {when}.",
+    "es": "Hecho. {title} en {shop} queda reservado para el {when}.",
+  },
+  "cancelled_purchase": {
+    "en": "Done. I cancelled {title} at {shop}: {back} goes back to your"
+    " card{coins}.",
+    "es": "Hecho. He cancelado {title} en {shop}: {back} vuelve a tu"
+    " tarjeta{coins}.",
+  },
+  "cannot_change": {
+    "en": "{shop} wouldn't do it: {message} Nothing changed.",
+    "es": "{shop} no lo ha permitido: {message} No ha cambiado nada.",
+  },
   "card_pays": {
     "en": "Your card pays {total}",
     "es": "Tu tarjeta paga {total}",

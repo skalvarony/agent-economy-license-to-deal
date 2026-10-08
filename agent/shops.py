@@ -229,6 +229,24 @@ class Shop:
       note="Pay the approved checkout",
     )
 
+  async def reschedule(self, order_id: str, starts_at: str) -> dict[str, Any]:
+    """Move an order's visit to another open slot, as the agent that bought."""
+    return await self.call(
+      "PUT",
+      f"/orders/{quote(order_id)}/booking",
+      {"starts_at": starts_at},
+      note="Move the visit",
+    )
+
+  async def cancel(self, order_id: str) -> dict[str, Any]:
+    """Cancel an order for a refund, under the deal's terms."""
+    return await self.call(
+      "POST",
+      f"/orders/{quote(order_id)}/cancellation",
+      {},
+      note="Cancel for a refund",
+    )
+
   async def order(self, order_id: str) -> dict[str, Any]:
     """Fetch an order with its vouchers and its payment."""
     return await self.call(

@@ -157,6 +157,21 @@ _TIME_PATTERNS = [
   r"\b(\d{1,2})\s*(am|pm)\b",
   r"\b(\d{1,2})\s*(h)\b",
 ]
+# A request to change a purchase: cancel it for a refund, or move its visit.
+_CANCEL_INTENT = (
+  r"\b(cancel|refund|cancela|cancelar|cancélalo|cancelalo|anula|anular"
+  r"|reembolsa|reembolso|devuelve)\b"
+)
+_MOVE_INTENT = (
+  r"\b(move|change|reschedule|switch|shift|cambia|cambiar|cámbialo|cambialo"
+  r"|mueve|mover|muévelo|muevelo|pasa|pásalo|pasalo)\b"
+)
+_CHANGE_WORDS = frozenset(
+  "cancel refund cancela cancelar cancélalo cancelalo anula anular reembolsa"
+  " reembolso devuelve move change reschedule switch shift cambia cambiar"
+  " cámbialo cambialo mueve mover muévelo muevelo pasa pásalo pasalo purchase"
+  " booking reservation reserva order pedido visit visita compra instead".split()
+)
 _REFUNDABLE = r"refund|cancel|change my mind"
 _NO_COINS = r"(?:no|without|don'?t use|do not use|keep(?: my)?) coins"
 # Words of a request that say nothing about which deal is wanted.
@@ -505,13 +520,26 @@ class ScriptedBrain:
       ask.budget = min(ask.budget or rules["max_total"], rules["max_total"])
     if rules.get("refundable_only"):
       ask.refundable = True
-    if not ask.understood:
-      return Step(text=say("help", lang))
     results = {
       turn["name"]: turn["result"]
       for turn in turns[asked + 1 :]
       if turn["role"] == "tool"
     }
+
+    # Changing a purchase, rather than making one: cancel it for a refund,
+    # or move its visit to another time.
+    text = turns[asked]["text"].lower()
+    wants_cancel = bool(re.search(_CANCEL_INTENT, text))
+    wants_move = (
+      bool(re.search(_MOVE_INTENT, text))
+      and ask.when is not None
+      and ask.hour_given
+    )
+    if wants_cancel or wants_move:
+      return self._change(ask, results, wants_move and not wants_cancel, lang)
+
+    if not ask.understood:
+      return Step(text=say("help", lang))
 
     if "search_deals" not in results:
       search: dict[str, Any] = {}
@@ -624,6 +652,128 @@ class ScriptedBrain:
         title=proposed["title"],
         shop=proposed["shop_name"],
         paying=paying,
+      )
+    )
+
+  def _change(
+    self, ask: Ask, results: dict[str, Any], move: bool, lang: str
+  ) -> Step:
+    """Cancel a purchase for a refund, or move its visit, as asked."""
+    if "list_purchases" not in results:
+      return Step(calls=[Call("list_purchases", {})])
+    rows = [
+      r
+      for r in results["list_purchases"]
+      if not r.get("error")
+      and r.get("voucher") == "issued"
+      and r.get("redemption") == "unredeemed"
+    ]
+    if not rows:
+      return Step(text=say("no_live_purchase", lang))
+    keys = ask.words - _CHANGE_WORDS
+    rows.sort(key=lambda r: -len(keys & _words(r["title"])))
+    best = rows[0]
+    if len(rows) > 1 and not keys & _words(best["title"]):
+      titles = ", ".join(r["title"] for r in rows)
+      return Step(text=say("which_purchase", lang, titles=titles))
+    if move:
+      if "check_availability" not in results:
+        return Step(
+          calls=[
+            Call(
+              "check_availability",
+              {
+                "shop": best["shop"],
+                "deal_id": best["deal_id"],
+                "from_day": ask.when.date().isoformat(),
+                "days": 1,
+              },
+            )
+          ]
+        )
+      listed = results["check_availability"]
+      if listed.get("error"):
+        return Step(
+          text=say(
+            "cannot_change",
+            lang,
+            shop=best["shop_name"],
+            message=listed["message"],
+          )
+        )
+      slot = slot_at(listed, ask.when)
+      if not slot:
+        return Step(
+          text=say(
+            "no_such_slot",
+            lang,
+            title=best["title"],
+            day=f"{ask.when:%a %-d %b}",
+            openings=openings(listed) or "nothing free",
+          )
+        )
+      if "reschedule_purchase" not in results:
+        return Step(
+          calls=[
+            Call(
+              "reschedule_purchase",
+              {
+                "shop": best["shop"],
+                "order_id": best["order_id"],
+                "starts_at": slot["starts_at"],
+              },
+            )
+          ]
+        )
+      done = results["reschedule_purchase"]
+      if done.get("error"):
+        return Step(
+          text=say(
+            "cannot_change",
+            lang,
+            shop=best["shop_name"],
+            message=done["message"],
+          )
+        )
+      return Step(
+        text=say(
+          "moved",
+          lang,
+          title=done["title"],
+          shop=done["shop_name"],
+          when=moment(done["booking"]["starts_at"]),
+        )
+      )
+    if "cancel_purchase" not in results:
+      return Step(
+        calls=[
+          Call(
+            "cancel_purchase",
+            {"shop": best["shop"], "order_id": best["order_id"]},
+          )
+        ]
+      )
+    done = results["cancel_purchase"]
+    if done.get("error"):
+      return Step(
+        text=say(
+          "cannot_change",
+          lang,
+          shop=best["shop_name"],
+          message=done["message"],
+        )
+      )
+    coins = (
+      f" and {done['coins']} coins to your wallet" if done.get("coins") else ""
+    )
+    return Step(
+      text=say(
+        "cancelled_purchase",
+        lang,
+        title=done["title"],
+        shop=done["shop_name"],
+        back=money(done.get("refunded") or 0),
+        coins=coins,
       )
     )
 

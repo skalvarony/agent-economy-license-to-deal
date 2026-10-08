@@ -91,6 +91,25 @@ def summarize(shop: Shop, product: dict[str, Any]) -> dict[str, Any]:
   }
 
 
+def _refundable(row: dict[str, Any]) -> tuple[bool, str]:
+  """Whether a purchase can still be cancelled for a refund, and why not."""
+  if row.get("error"):
+    return False, row["error"]
+  if row.get("payment") != "captured":
+    return False, "Already refunded."
+  if row.get("voucher") != "issued" or row.get("redemption") != "unredeemed":
+    return False, "The voucher has been used or cancelled."
+  cancellation = row.get("cancellation") or {}
+  if cancellation.get("refundability") != "refundable":
+    return False, "This deal is not refundable."
+  until = cancellation.get("refundable_until")
+  if until and datetime.datetime.fromisoformat(until) < datetime.datetime.now(
+    datetime.timezone.utc
+  ):
+    return False, f"The refund period ended on {until[:10]}."
+  return True, ""
+
+
 def _deal_card(
   deal: dict[str, Any] | None, option_id: str
 ) -> dict[str, Any] | None:
@@ -581,6 +600,54 @@ class Session:
         run=self.check_availability,
       ),
       Tool(
+        name="list_purchases",
+        description=(
+          "The customer's purchases on record, newest first, as the shops"
+          " see them now: order id, shop, deal, the date and time booked,"
+          " the voucher's state and whether it can still be cancelled for a"
+          " refund. Use the order id with reschedule_purchase or"
+          " cancel_purchase."
+        ),
+        parameters={"type": "object", "properties": {}},
+        run=self.list_purchases,
+      ),
+      Tool(
+        name="reschedule_purchase",
+        description=(
+          "Move a purchase's visit to another open slot of the same deal,"
+          " when the customer asks for it. Check the deal's availability"
+          " first and pass the slot's starts_at. Nothing is paid."
+        ),
+        parameters={
+          "type": "object",
+          "properties": {
+            "shop": {"type": "string", "enum": shop_ids},
+            "order_id": {"type": "string"},
+            "starts_at": {"type": "string"},
+          },
+          "required": ["shop", "order_id", "starts_at"],
+        },
+        run=self.reschedule_purchase,
+      ),
+      Tool(
+        name="cancel_purchase",
+        description=(
+          "Cancel a purchase for a refund, when the customer asks for it."
+          " The shop allows it while the deal is refundable, its refund"
+          " deadline has not passed and the voucher is unused; the card"
+          " payment and the coins go back the way they came."
+        ),
+        parameters={
+          "type": "object",
+          "properties": {
+            "shop": {"type": "string", "enum": shop_ids},
+            "order_id": {"type": "string"},
+          },
+          "required": ["shop", "order_id"],
+        },
+        run=self.cancel_purchase,
+      ),
+      Tool(
         name="recall",
         description=(
           "What the agent knows about the customer: profile, preferences,"
@@ -672,6 +739,105 @@ class Session:
     """Ask a shop which slots a deal has open, from a day on."""
     return await self.shops[shop].availability(deal_id, from_day, days)
 
+  async def list_purchases(self) -> list[dict[str, Any]]:
+    """Return the purchases a brain may act on, trimmed to what matters."""
+    rows = []
+    for row in await self.purchases():
+      service = row.get("service") or {}
+      refundable, why = _refundable(row)
+      rows.append(
+        {
+          "order_id": row["order_id"],
+          "shop": row["shop"],
+          "shop_name": row["shop_name"],
+          "title": row["title"],
+          "deal_id": service.get("deal_id"),
+          "bought_at": row["at"],
+          "booking": service.get("booking"),
+          "voucher": row.get("voucher"),
+          "redemption": row.get("redemption"),
+          "payment": row.get("payment"),
+          "charged": row.get("charged"),
+          "coins": row.get("coins", 0),
+          "can_cancel": refundable,
+          "why_not": why,
+          "error": row.get("error"),
+        }
+      )
+    return rows
+
+  async def reschedule_purchase(
+    self, shop: str, order_id: str, starts_at: str
+  ) -> dict[str, Any]:
+    """Move a purchase's visit, as the person could on the shop's page."""
+    seller = self.shops[shop]
+    order = await seller.reschedule(order_id, starts_at)
+    line = (order.get("line_items") or [{}])[0]
+    booking = (line.get("service") or {}).get("booking") or {}
+    self._record_change(
+      "rescheduled", seller, order_id, line, starts_at=booking.get("starts_at")
+    )
+    self._note(
+      f"{line.get('item', {}).get('title', 'The purchase')} at {seller.name}"
+      f" was moved to {booking.get('starts_at')}."
+    )
+    return {
+      "ok": True,
+      "order_id": order_id,
+      "title": line.get("item", {}).get("title"),
+      "shop_name": seller.name,
+      "booking": booking,
+    }
+
+  async def cancel_purchase(self, shop: str, order_id: str) -> dict[str, Any]:
+    """Cancel a purchase for a refund, as the person could on the page."""
+    seller = self.shops[shop]
+    order = await seller.cancel(order_id)
+    line = (order.get("line_items") or [{}])[0]
+    payment = order.get("payment") or {}
+    self._record_change(
+      "cancelled_purchase",
+      seller,
+      order_id,
+      line,
+      refunded=payment.get("amount"),
+      coins=payment.get("coins", 0),
+    )
+    self._note(
+      f"{line.get('item', {}).get('title', 'The purchase')} at {seller.name}"
+      f" was cancelled and refunded."
+    )
+    if payment.get("coins"):
+      await self.read_wallets()
+    return {
+      "ok": True,
+      "order_id": order_id,
+      "title": line.get("item", {}).get("title"),
+      "shop_name": seller.name,
+      "refunded": payment.get("amount"),
+      "coins": payment.get("coins", 0),
+    }
+
+  def _record_change(
+    self, event: str, shop: Shop, order_id: str, line: dict[str, Any], **more: Any
+  ) -> None:
+    """Write a change to a purchase to the agent's record."""
+    if not self.run_dir:
+      return
+    entry = {
+      "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+      "event": event,
+      "by": self.customer["email"],
+      "method": self.via or "page",
+      "shop": shop.id,
+      "order_id": order_id,
+      "item": (line.get("item") or {}).get("title"),
+      **more,
+    }
+    self.run_dir.mkdir(parents=True, exist_ok=True)
+    with (self.run_dir / "approvals.jsonl").open("a") as record:
+      record.write(json.dumps(entry) + "\n")
+
   async def recall(self) -> dict[str, Any]:
     """Return the memory and the recent history."""
     return {**self.memory.as_dict(), "history": self.history_words()}
@@ -695,6 +861,10 @@ class Session:
         words.append(f"bought {line['item']} at {where} for {paid} on {when}")
       elif line["event"] == "declined":
         words.append(f"declined {line['item']} on {when}")
+      elif line["event"] == "rescheduled":
+        words.append(f"moved {line['item']} to {line.get('starts_at')} on {when}")
+      elif line["event"] == "cancelled_purchase":
+        words.append(f"cancelled {line['item']} for a refund on {when}")
       elif line["event"] == "stopped" and line.get("why") == "total_changed":
         words.append(
           f"a purchase of {line['item']} stopped when the shop changed the"

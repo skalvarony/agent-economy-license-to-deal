@@ -12,6 +12,7 @@ from typing import Any
 
 import config
 from routes.storefront import esc
+from routes.storefront import moment
 from routes.storefront import money
 from services import ledger
 from services import visitor
@@ -301,6 +302,8 @@ def _describe(event: dict[str, Any]) -> str | None:
     return "Turned away at the venue; the merchant could not deliver"
   if kind == "MERCHANT_CANCELLED":
     return "Cancelled by the marketplace"
+  if kind == "BOOKING_CHANGED":
+    return f"Moved to {moment(d['to'])}" if d.get("to") else "Visit moved"
   if kind == "SHOPPER_CANCELLED":
     return "Cancelled by you"
   if kind == "REFUND_AUTHORISED":

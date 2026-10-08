@@ -26,7 +26,10 @@ from fastapi import Header
 from fastapi import HTTPException
 from fastapi import Path
 from models import UnifiedOrder
+from routes.voucher import get_voucher_service
 from services.checkout_service import CheckoutService
+from services.voucher_service import VoucherService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -64,6 +67,70 @@ async def get_order(
         " it",
       )
   return order
+
+
+def _only_the_agent(order: dict[str, Any], ucp_agent: str) -> None:
+  """Refuse anyone but the agent that placed the order."""
+  asked_by = _profile(ucp_agent)
+  if not asked_by or asked_by != order.get("agent"):
+    raise HTTPException(
+      status_code=403,
+      detail="Only the agent that placed this order may change it",
+    )
+
+
+@router.put(
+  "/orders/{id}/booking",
+  response_model=dict[str, Any],
+  operation_id="reschedule_order",
+)
+async def reschedule_order(
+  order_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  checkout_service: Annotated[
+    CheckoutService, Depends(dependencies.get_checkout_service)
+  ],
+  vouchers: Annotated[VoucherService, Depends(get_voucher_service)],
+  products_session: Annotated[
+    AsyncSession, Depends(dependencies.get_products_db)
+  ],
+  starts_at: Annotated[str, Body(embed=True)],
+) -> dict[str, Any]:
+  """Move the order's visit to another open slot, as the customer's agent.
+
+  What the customer can do from the order's page, the agent that placed the
+  order can do here: `starts_at` is a slot from the deal's availability.
+  """
+  order = await checkout_service.get_order(order_id)
+  _only_the_agent(order, common_headers.ucp_agent)
+  return await vouchers.reschedule(products_session, order_id, starts_at)
+
+
+@router.post(
+  "/orders/{id}/cancellation",
+  response_model=dict[str, Any],
+  operation_id="cancel_order_by_shopper",
+)
+async def cancel_order_by_shopper(
+  order_id: Annotated[str, Path(..., alias="id")],
+  common_headers: Annotated[
+    dependencies.CommonHeaders, Depends(dependencies.common_headers)
+  ],
+  checkout_service: Annotated[
+    CheckoutService, Depends(dependencies.get_checkout_service)
+  ],
+  vouchers: Annotated[VoucherService, Depends(get_voucher_service)],
+) -> dict[str, Any]:
+  """Cancel the order for a refund, as the customer's agent, under the terms.
+
+  Refundable deals only, before the refund deadline, while the voucher is
+  unused: the same as the customer's own button on the order's page.
+  """
+  order = await checkout_service.get_order(order_id)
+  _only_the_agent(order, common_headers.ucp_agent)
+  return await vouchers.cancel_by_shopper(order_id)
 
 
 def _profile(ucp_agent: str) -> str | None:

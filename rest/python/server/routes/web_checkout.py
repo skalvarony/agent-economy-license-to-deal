@@ -60,6 +60,7 @@ from services import payment_rail
 from services import voucher_service
 from services.checkout_service import CheckoutService
 from services.voucher_service import VoucherService
+from sqlalchemy.ext.asyncio import AsyncSession
 from ucp_sdk.models.schemas.shopping.payment_create_request import (
   PaymentCreateRequest,
 )
@@ -93,6 +94,8 @@ NOTICES = {
     "Order cancelled. The card payment and any coins are on their way back."
   ),
   "norefund": "This order can't be cancelled for a refund any more.",
+  "moved": "Your visit has been moved. The new date and time are below.",
+  "notmoved": "That date and time aren't available for this order. Pick another.",
   "promo": "That promo code isn't valid.",
   "paid": "Payment received. Your voucher is ready.",
 }
@@ -1042,7 +1045,10 @@ async def voucher_page(
       </li>"""
 
   payment = order.get("payment") or {}
-  # Cancelling for a refund is the customer's own, while the terms allow it.
+  # Moving the visit, and cancelling for a refund, are the customer's own.
+  move = await _reschedule_form(
+    checkouts.products_session, transactions_session, order_id, order
+  )
   allowed, why = voucher_service.refundable_now(order)
   if allowed:
     cancel = f"""
@@ -1081,6 +1087,7 @@ async def voucher_page(
           <code>{esc(payment.get("rail", ""))}</code>). Reference
           <code>{esc(payment.get("payment_id", ""))}</code>. Order
           <code>{esc(order_id)}</code>.</p>
+        {move}
         {cancel}
         <a class="back" href="/">Keep browsing</a>
       </aside>
@@ -1090,6 +1097,91 @@ async def voucher_page(
       {provenance.timeline(order, order_id)}
     </div>"""
   return HTMLResponse(storefront.page("Your order", body, request, shopper))
+
+
+async def _reschedule_form(
+  products_session: AsyncSession,
+  transactions_session: AsyncSession,
+  order_id: str,
+  order: dict[str, Any],
+) -> str:
+  """Render the choice of another date and time for an unused voucher."""
+  lines = [li for li in order.get("line_items") or [] if "voucher" in li]
+  if not lines or (order.get("payment") or {}).get("status") != "captured":
+    return ""
+  line = lines[0]
+  booking = (line.get("service") or {}).get("booking") or {}
+  if not booking.get("starts_at") or booking.get("status") == "released":
+    return ""
+  if line["voucher"]["status"] != "issued" or line["redemption"]["status"] != "unredeemed":
+    return ""
+  found = await db.get_option(products_session, line["item"]["id"])
+  if not found:
+    return ""
+  listed = await booking_service.availability(
+    transactions_session, found[0], days=booking_service.MAX_DAYS
+  )
+  units = line["quantity"]["total"]
+  groups = ""
+  for day in listed["days"]:
+    options = ""
+    for slot in day["slots"]:
+      if slot["starts_at"] == booking["starts_at"]:
+        continue
+      full = slot["left"] < units
+      note = "full" if slot["left"] <= 0 else f"{slot['left']} left"
+      options += (
+        f'<option value="{esc(slot["starts_at"])}"{" disabled" if full else ""}>'
+        f'{esc(storefront.moment(slot["starts_at"])[-5:])} · {note}</option>'
+      )
+    if options:
+      groups += (
+        f'<optgroup label="{esc(storefront.day(day["date"] + "T00:00:00"))}">'
+        f"{options}</optgroup>"
+      )
+  if not groups:
+    return '<p class="tech">No other date or time is open for this deal right now.</p>'
+  return f"""
+    <form class="slot move" method="post"
+          action="/vouchers/{esc(order_id)}/reschedule">
+      <p class="booked">Booked for <b>{esc(storefront.slot_text(booking))}</b>.</p>
+      <label>Move it to
+        <select name="starts_at" required>
+          <option value="">Another date and time…</option>
+          {groups}
+        </select>
+      </label>
+      <button type="submit">Change the date and time</button>
+      <p class="tech">Your place moves with you; the old slot is freed.</p>
+    </form>"""
+
+
+@router.post("/vouchers/{id}/reschedule", include_in_schema=False)
+async def reschedule_order_page(
+  request: Request,
+  shopper: storefront.ShopperSession,
+  products_session: storefront.ProductsDb,
+  transactions_session: storefront.TransactionsDb,
+  order_id: Annotated[str, Path(..., alias="id")],
+) -> Response:
+  """Move the order's visit to another open slot, at the customer's request."""
+  here = f"/vouchers/{order_id}"
+  if not shopper.user:
+    return storefront.login_redirect(here)
+  owner = await db.get_order_owner(transactions_session, order_id)
+  if owner != shopper.user.id:
+    return storefront.not_found(request, shopper, "order")
+  form = await _form(request)
+  vouchers = VoucherService(transactions_session, payment_rail.get_rail())
+  try:
+    await vouchers.reschedule(
+      products_session, order_id, form.get("starts_at", "")
+    )
+  except (VoucherStateError, SlotUnavailableError, InvalidRequestError):
+    return _redirect(f"{here}?notice=notmoved")
+  except ResourceNotFoundError:
+    return storefront.not_found(request, shopper, "order")
+  return _redirect(f"{here}?notice=moved")
 
 
 @router.post("/vouchers/{id}/cancel", include_in_schema=False)

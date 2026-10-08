@@ -20,6 +20,7 @@ import dependencies
 from fastapi.testclient import TestClient
 import httpx
 from server.server import app
+from routes import storefront
 from services import booking_service
 from services import payment_rail
 from services import visitor
@@ -2147,6 +2148,107 @@ class ShopperCancelTest(ShopTestCase):
     refused = self.client.post(f"/vouchers/{order_id}/cancel", follow_redirects=False)
     self.assertEqual(refused.status_code, 404, refused.text)
     self.assertEqual(self._order(order_id)["payment"]["status"], "captured")
+
+
+class RescheduleTest(BookingTest):
+  """The customer, or the agent that bought, moves the visit to another slot."""
+
+  def _book(self, index: int = 0) -> tuple[str, dict]:
+    slot = self._slot(index)
+    done = self._complete(self._create_booked(slot["starts_at"]).json()["id"])
+    self.assertEqual(done.status_code, 200, done.text)
+    return done.json()["order"]["id"], slot
+
+  def test_the_agent_moves_the_visit_over_ucp(self) -> None:
+    """The old slot's places come back, the new one's are taken."""
+    order_id, first = self._book(0)
+    second = self._slot(1)
+    moved = self.client.put(
+      f"/orders/{order_id}/booking",
+      headers=self._headers(),
+      json={"starts_at": second["starts_at"]},
+    )
+    self.assertEqual(moved.status_code, 200, moved.text)
+    booking = moved.json()["line_items"][0]["service"]["booking"]
+    self.assertEqual(booking["starts_at"], second["starts_at"])
+    self.assertEqual(booking["rescheduled_from"], first["starts_at"])
+    self.assertEqual(booking["status"], "booked")
+    self.assertEqual(self._slot(0)["left"], 2)
+    self.assertEqual(self._slot(1)["left"], 1)
+    self.assertIn("BOOKING_CHANGED", self._events())
+    # A full slot, or one the deal doesn't offer, is refused and nothing moves.
+    for _ in range(2):
+      self._complete(self._create_booked(self._slot(2)["starts_at"]).json()["id"])
+    refused = self.client.put(
+      f"/orders/{order_id}/booking",
+      headers=self._headers(),
+      json={"starts_at": self._slot(2)["starts_at"]},
+    )
+    self.assertEqual(refused.status_code, 409, refused.text)
+    self.assertEqual(self._slot(1)["left"], 1)
+    # Only the agent that placed the order may move it.
+    other = {**self._headers(), "UCP-Agent": 'profile="https://other.example/p"'}
+    stranger = self.client.put(
+      f"/orders/{order_id}/booking",
+      headers=other,
+      json={"starts_at": second["starts_at"]},
+    )
+    self.assertEqual(stranger.status_code, 403, stranger.text)
+
+  def test_the_agent_cancels_for_a_refund_over_ucp(self) -> None:
+    """The same cancellation the customer has on the page, under the terms."""
+    order_id, first = self._book(0)
+    cancelled = self.client.post(
+      f"/orders/{order_id}/cancellation", headers=self._headers()
+    )
+    self.assertEqual(cancelled.status_code, 200, cancelled.text)
+    order = cancelled.json()
+    self.assertEqual(order["payment"]["status"], "refunded")
+    self.assertEqual(
+      order["line_items"][0]["redemption"]["status"], "cancelled_by_shopper"
+    )
+    self.assertEqual(self._slot(0)["left"], 2)
+    again = self.client.post(
+      f"/orders/{order_id}/cancellation", headers=self._headers()
+    )
+    self.assertEqual(again.status_code, 409, again.text)
+
+  def test_the_customer_moves_the_visit_from_the_order_page(self) -> None:
+    """The page offers the other open slots; the move shows on the order."""
+    self._signup()
+    first, second = self._slot(0), self._slot(1)
+    self.client.post(
+      "/cart/add", data={"product_id": "sauna-60", "quantity": "1"},
+      follow_redirects=False,
+    )
+    path = self.client.post("/checkout", data={}, follow_redirects=False).headers["location"]
+    self.client.post(
+      f"{path}/booking", data={"item_id": "sauna-60", "starts_at": first["starts_at"]},
+      follow_redirects=False,
+    )
+    paid = self.client.post(
+      f"{path}/pay", data={"card": "ok", "seen_total": "4900"}, follow_redirects=False
+    )
+    order_path = paid.headers["location"].split("?")[0]
+    page = self.client.get(order_path).text
+    self.assertIn("Change the date and time", page)
+    self.assertIn(second["starts_at"], page)
+    self.assertNotIn(f'value="{first["starts_at"]}"', page)
+    moved = self.client.post(
+      f"{order_path}/reschedule", data={"starts_at": second["starts_at"]},
+      follow_redirects=False,
+    )
+    self.assertIn("notice=moved", moved.headers["location"])
+    page = self.client.get(order_path).text
+    self.assertIn(storefront.moment(second["starts_at"]), page)
+    self.assertIn("Moved to", page)
+    self.assertEqual(self._slot(0)["left"], 2)
+    self.assertEqual(self._slot(1)["left"], 1)
+    bad = self.client.post(
+      f"{order_path}/reschedule", data={"starts_at": "nonsense"},
+      follow_redirects=False,
+    )
+    self.assertIn("notice=notmoved", bad.headers["location"])
 
 
 if __name__ == "__main__":

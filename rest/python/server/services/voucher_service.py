@@ -296,6 +296,57 @@ class VoucherService:
     await self._save(order, "SHOPPER_CANCELLED")
     return await self.refund(order_id, "cancelled by the customer")
 
+  async def reschedule(
+    self, products_session: AsyncSession, order_id: str, starts_at: Any
+  ) -> dict[str, Any]:
+    """Move an order's visit to another open slot of the same deal.
+
+    While the voucher is unused. The places go back to the old slot and are
+    taken in the new one, which is checked for room; the order keeps the
+    old start under `rescheduled_from` and the ledger a BOOKING_CHANGED.
+    """
+    order, lines = await self._load(order_id)
+    self._require(lines, "reschedule", {"unredeemed"})
+    moved = []
+    for line in lines:
+      booking = (line.get("service") or {}).get("booking") or {}
+      if not booking.get("starts_at"):
+        raise VoucherStateError("This purchase has no date and time to move.")
+      found = await db.get_option(products_session, line["item"]["id"])
+      if not found:
+        raise ResourceNotFoundError("Deal not found")
+      deal = found[0]
+      units = line["quantity"]["total"]
+      # Give the old places back first, so a move within a slot fits.
+      await booking_service.release(self.transactions_session, order_id)
+      slot = await booking_service.check(
+        self.transactions_session, deal, starts_at, units
+      )
+      await db.add_booking(
+        self.transactions_session,
+        order_id=order_id,
+        line_id=line["id"],
+        deal_id=deal.id,
+        product_id=line["item"]["id"],
+        buyer_email=(order.get("buyer") or {}).get("email"),
+        starts_at=slot["starts_at"],
+        ends_at=slot["ends_at"],
+        units=units,
+      )
+      moved.append((booking["starts_at"], slot["starts_at"]))
+      booking.update(
+        rescheduled_from=booking["starts_at"],
+        starts_at=slot["starts_at"],
+        ends_at=slot["ends_at"],
+        status="booked",
+      )
+    await self._save(
+      order,
+      "BOOKING_CHANGED",
+      {"from": moved[0][0], "to": moved[0][1]} if moved else None,
+    )
+    return order
+
   async def redeem(self, order_id: str, honoured: bool) -> dict[str, Any]:
     """Record a redemption attempt at the venue.
 

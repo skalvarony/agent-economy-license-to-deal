@@ -109,7 +109,7 @@ then update the connector in ChatGPT/Claude.
 | landing | `deploy/landing/` (static) | via Caddy | — |
 
 Stack: Python 3.12 + FastAPI + `uv`, vanilla JS/CSS front ends, Playwright
-for browser tests, Docker Compose. Tests: 350 (shops) + 46 (agent) + 9 +
+for browser tests, Docker Compose. Tests: 360 (shops) + 49 (agent) + 9 +
 7 (console, login).
 
 ## What the system does
@@ -122,7 +122,9 @@ for browser tests, Docker Compose. Tests: 350 (shops) + 46 (agent) + 9 +
 - Searches the three shops, proposes the best deal — or the three best — with
   the exact total the shop quotes; uses your coins and promo codes. Asks
   for a day and an hour when you gave none, checks the shop's open slots
-  and books the one you named ("Saturday at 11:00").
+  and books the one you named ("Saturday at 11:00"). Moves or cancels what
+  you bought when you ask ("move my spa day to Sunday at 12", "cancel the
+  beer tasting"), as you could yourself on the shop's order page.
 - Never pays without your Approve; the model has no tool that pays. Approve
   covers one exact total; if the shop changes it, it stops and asks again.
 - Approvals from the web, from the card in ChatGPT/Claude, or from Telegram
@@ -143,9 +145,10 @@ for browser tests, Docker Compose. Tests: 350 (shops) + 46 (agent) + 9 +
 - Storefront for people: browse, cart, Stripe Elements checkout, account page
   (coins, orders, who buys for you), My vouchers (newest first, filters, who
   bought it and through which app, the shop's own ledger of the order).
-- Refunds to card and wallet, asked for by the customer from the order page
-  while the terms allow it, or by the marketplace from the console; codes
-  voided; everything in an append-only ledger.
+- From the order page the customer moves the visit to another open slot or
+  cancels for a refund while the terms allow it; the marketplace cancels and
+  refunds from the console. Refunds go to card and wallet; codes voided;
+  everything in an append-only ledger.
 
 **Console** (marketplace): all orders across shops, agent vs human, Stripe
 details per order, cancel and refund in one click, inbox marks (new, seen,
@@ -202,7 +205,7 @@ your screen and nowhere else.
 
 Locally (needs `uv`, Node 22+): `scripts/shops.sh start`, `scripts/agent.sh
 start` (http://localhost:8190, no login), `scripts/console.sh start`,
-`python3 scripts/smoke.py` runs 26 live checks.
+`python3 scripts/smoke.py` runs 28 live checks.
 Every local start re-seeds.
 
 ## Repo map

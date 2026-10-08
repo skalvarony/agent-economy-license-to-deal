@@ -22,15 +22,16 @@ Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
 scripts/agent.sh start       # http://localhost:8190
 scripts/console.sh start     # http://localhost:8195
-python3 scripts/smoke.py     # 26 live checks: buys, books, cancels, refunds, booking fee
+python3 scripts/smoke.py     # 28 live checks: buys, books, moves, cancels, refunds, booking fee
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
-Tests: `cd rest/python/server && uv run pytest` (350), `cd agent && uv run
-pytest` (46), `cd console && uv run pytest` (16). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
-running): `npm install && npx playwright install chromium` once, then
-`npm test` (five shop flows) and `npm run test:agent` (three agent flows).
-They use exact checks and need no model.
+Tests: `cd rest/python/server && uv run pytest` (360), `cd agent && uv run
+pytest` (49), `cd console && uv run pytest` (16). Browser tests in
+`tests-e2e/` (Node 22.12+, shops and agent running): `npm install && npx
+playwright install chromium` once, then `npm test` (five shop flows) and
+`npm run test:agent` (three agent flows). They use exact checks and need no
+model.
 
 `deploy/` runs it all on one VM with Docker Compose and Caddy; its `README.md`
 has the steps. Secrets live only in the VM's `deploy/.env`.
@@ -82,6 +83,8 @@ Both end in the same checkout code, order, voucher, payment and ledger events.
 | `POST /checkout-sessions` | Open a checkout; line items carry the voucher terms; `bookings` names the slot |
 | `POST /checkout-sessions/{id}/complete` | Pay; the order comes back with the voucher |
 | `GET /orders/{id}` | The order: only for the agent that placed it, or the shop |
+| `PUT /orders/{id}/booking` | Move the visit to another open slot; the agent that placed the order |
+| `POST /orders/{id}/cancellation` | Cancel for a refund under the deal's terms; the agent that placed the order |
 | `GET /wallet?email=` | The buyer's coins here and the shop's percentage back |
 
 With `REQUIRE_SIGNATURES=1` (the default on the server) an unsigned request
@@ -100,10 +103,12 @@ tell what they bought themselves from what their agent bought, and how.
 
 **For people (browser, cookies):** `/` and `/deals/{id}` to browse, `/cart`,
 `/login`, `/account`, `/checkout/{id}` (needs an account), and `/vouchers`.
-From an order's page the customer can cancel it for a refund while the deal
-is refundable and its refund deadline has not passed (`POST
-/vouchers/{id}/cancel`): the card payment and the coins go back the way they
-came, the voucher is voided and its slot released.
+From an order's page the customer can move the visit to another open slot
+(`POST /vouchers/{id}/reschedule`; the old slot is freed) and cancel the
+order for a refund while the deal is refundable and its refund deadline has
+not passed (`POST /vouchers/{id}/cancel`): the card payment and the coins go
+back the way they came, the voucher is voided and its slot released. What
+the customer can do by hand here, their agent can do over UCP.
 There is no public registration: the shop creates accounts (`POST /accounts`
 with the merchant secret; `shops/<shop>/users.csv` seeds them, and on the
 server `deploy/add-account.sh` adds one). An order belongs to the account
@@ -134,9 +139,12 @@ searches the three shops, reads the person's coins in each, and proposes one
 deal: what, why, what it turned down and why, and the exact total with the
 coins/card split. Each turn shows the signed requests it sent.
 
-1. The brain (`agent/brain.py`) has four tools, `search_deals`,
-   `read_wallets`, `check_availability` and `propose_purchase`. None of
-   them pays. A deal is booked for a date and time: the brain asks for them
+1. The brain (`agent/brain.py`) has the tools `search_deals`,
+   `read_wallets`, `check_availability` and `propose_purchase`, and, for
+   what was already bought, `list_purchases`, `reschedule_purchase` and
+   `cancel_purchase`: everything the person could do by hand on the shop's
+   order page ("move my spa day to Sunday at 12", "cancel the beer
+   tasting"). None of them pays. A deal is booked for a date and time: the brain asks for them
    when the person gave none ("Saturday at 11:00", "mañana a las 18"), reads
    the shop's open slots and proposes with the slot's `starts_at`.
 2. `propose_purchase` opens a checkout in the shop, booked for that slot; the

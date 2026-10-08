@@ -70,6 +70,15 @@ charge, and `409 SLOT_UNAVAILABLE` if the slot filled up meanwhile. The
 order's line keeps the slot with `status: booked`; a refund or the merchant's
 cancellation marks it `released` and gives the places back.
 
+The agent that placed an order may change it as its customer could on the
+shop's own page: `PUT /orders/{id}/booking` with `{"starts_at": …}` moves the
+visit to another open slot of the same deal (the old places are freed; the
+line keeps `rescheduled_from`; the ledger a `BOOKING_CHANGED`), and
+`POST /orders/{id}/cancellation` cancels it for a refund while the deal is
+refundable, before its deadline and while the voucher is unused
+(`redemption.status: cancelled_by_shopper`, then the refund). Any other
+agent gets `403`.
+
 ## Promo codes
 
 A catalog product lists the codes the shop advertises under `promotions`. A
