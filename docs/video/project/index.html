@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>License to Deal: demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter";
+        src: url("assets/inter.woff2") format("woff2");
+        font-weight: 100 900;
+        font-display: block;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #fafaf9;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #fafaf9;
+        font-family: "Inter", sans-serif;
+        color: #0d0d0d;
+      }
+      /* One camera per shot: a plain (untimed) wrapper the keyframes move.
+         The recording inside it is the timed clip; it fills the frame exactly (16:9). */
+      .cam {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: 0 0;
+      }
+      .cam video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      /* Captions: one at a time, bottom-left, in the product's own type. */
+      .cap {
+        position: absolute;
+        left: 72px;
+        bottom: 64px;
+        width: 1500px;
+        z-index: 10;
+      }
+      .cap span {
+        display: inline-block;
+        max-width: 1500px;
+        padding: 16px 26px 17px;
+        border-radius: 12px;
+        background: rgb(250 250 249 / 0.97);
+        outline: 1px solid rgb(13 13 13 / 0.08);
+        box-shadow:
+          0 1px 2px rgb(13 13 13 / 0.06),
+          0 6px 24px rgb(13 13 13 / 0.1);
+        font-size: 32px;
+        font-weight: 500;
+        line-height: 1.25;
+        letter-spacing: -0.012em;
+        color: #0d0d0d;
+      }
+      #close {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        background: #fafaf9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #close .lockup {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+      }
+      #close img {
+        width: 76px;
+        height: 76px;
+        display: block;
+      }
+      #close .name {
+        font-size: 48px;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+        color: #0d0d0d;
+      }
+      #close .url {
+        font-size: 26px;
+        font-weight: 400;
+        color: #5d5d5d;
+        letter-spacing: -0.005em;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="113.4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- 1-2 · The ask, the proposal, Approve, the receipt -->
+      <div class="cam" id="cam-ask">
+        <video id="v-ask" class="clip" src="assets/ask.mp4" muted playsinline
+          data-start="0" data-duration="28.8" data-media-start="2.0" data-track-index="0"></video>
+      </div>
+      <!-- 3 · The three best; approve one -->
+      <div class="cam" id="cam-beer">
+        <video id="v-beer" class="clip" src="assets/beer.mp4" muted playsinline
+          data-start="28.8" data-duration="12.8" data-media-start="3.0" data-track-index="0"></video>
+      </div>
+      <!-- 4 · The shop knows who bought -->
+      <div class="cam" id="cam-shop">
+        <video id="v-shop" class="clip" src="assets/shop.mp4" muted playsinline
+          data-start="41.6" data-duration="15.8" data-media-start="1.0" data-track-index="0"></video>
+      </div>
+      <!-- 5 · The marketplace console: the spa's payment and agent side, then a refund -->
+      <div class="cam" id="cam-con1">
+        <video id="v-con1" class="clip" src="assets/console.mp4" muted playsinline
+          data-start="57.4" data-duration="12.4" data-media-start="2.4" data-track-index="0"></video>
+      </div>
+      <div class="cam" id="cam-con2">
+        <video id="v-con2" class="clip" src="assets/console.mp4" muted playsinline
+          data-start="69.8" data-duration="8.6" data-media-start="18.2" data-track-index="0"></video>
+      </div>
+      <!-- 6 · The venue -->
+      <div class="cam" id="cam-venue">
+        <video id="v-venue" class="clip" src="assets/venue.mp4" muted playsinline
+          data-start="78.4" data-duration="10.2" data-media-start="1.4" data-track-index="0"></video>
+      </div>
+      <!-- 7 · Both records: Your purchases, then the evidence page -->
+      <div class="cam" id="cam-after1">
+        <video id="v-after1" class="clip" src="assets/after.mp4" muted playsinline
+          data-start="88.6" data-duration="13.4" data-media-start="2.4" data-track-index="0"></video>
+      </div>
+      <div class="cam" id="cam-after2">
+        <video id="v-after2" class="clip" src="assets/after.mp4" muted playsinline
+          data-start="102" data-duration="7" data-media-start="18.0" data-track-index="0"></video>
+      </div>
+
+      <!-- 8 · Close -->
+      <section id="close" class="clip" data-start="109" data-duration="4.4" data-track-index="0">
+        <div class="lockup">
+          <img id="close-mark" src="assets/mark.svg" alt="" />
+          <div id="close-name" class="name">License to Deal</div>
+          <div id="close-url" class="url">licensetodeal.app</div>
+        </div>
+      </section>
+
+      <!-- Captions: one track, one at a time -->
+      <div id="c1" class="cap clip" data-start="8" data-duration="12" data-track-index="1"><span>Your agent searches three marketplaces and proposes. It cannot pay.</span></div>
+      <div id="c2" class="cap clip" data-start="21" data-duration="7.3" data-track-index="1"><span>You approve. Only then it pays: the exact total, nothing else.</span></div>
+      <div id="c3" class="cap clip" data-start="33.3" data-duration="7.8" data-track-index="1"><span>Ask for the three best; pick one.</span></div>
+      <div id="c4" class="cap clip" data-start="47.6" data-duration="9.3" data-track-index="1"><span>The shop verified the agent’s signature and shows who bought, and how.</span></div>
+      <div id="c5" class="cap clip" data-start="58.4" data-duration="12.4" data-track-index="1"><span>Marketplaces get a console: every order, the payment behind it, a refund in one click.</span></div>
+      <div id="c6" class="cap clip" data-start="79.4" data-duration="8.7" data-track-index="1"><span>At the venue the code is honoured; the shop and the agent see it at once.</span></div>
+      <div id="c7" class="cap clip" data-start="89.6" data-duration="12" data-track-index="1"><span>Both sides keep the record; the evidence page cross-checks them.</span></div>
+    </div>
+    <script>
+      // Camera: a pose is a zoom `s` centred on frame point (cx, cy), clamped so the
+      // recording always covers the frame (no margins, no letterbox).
+      const W = 1920, H = 1080;
+      function pose(s, cx = W / 2, cy = H / 2) {
+        let x = W / 2 - s * cx;
+        let y = H / 2 - s * cy;
+        x = Math.min(0, Math.max(W - W * s, x));
+        y = Math.min(0, Math.max(H - H * s, y));
+        return { scale: s, x, y };
+      }
+      const tl = gsap.timeline({ paused: true });
+      // A shot's camera, in shot-local seconds.
+      function shot(id, start, s, cx, cy) {
+        const sel = "#cam-" + id;
+        tl.set(sel, pose(s, cx, cy), start);
+        return {
+          move(t, dur, s, cx, cy, ease = "sine.inOut") {
+            tl.to(sel, { ...pose(s, cx, cy), duration: dur, ease }, start + t);
+            return this;
+          },
+          cut(t, s, cx, cy) {
+            tl.set(sel, pose(s, cx, cy), start + t);
+            return this;
+          },
+        };
+      }
+
+      // 1-2 · ask (0 → 28.8)
+      shot("ask", 0, 1)
+        .move(0.3, 6.6, 1.2, 1121, 480)          // slow push towards the composer while typing
+        .cut(7.4, 1)                              // the proposal lands: wide again
+        .move(15.4, 2.9, 1.32, 1150, 720, "power2.inOut") // punch in on the total and Approve
+        .move(20.9, 2.2, 1, 960, 540, "power2.inOut")     // after the click: out to see the receipt
+        .move(24.3, 2.8, 1.28, 900, 560, "power2.inOut"); // in on the voucher code and the charge
+
+      // 3 · beer (28.8 → 41.6)
+      shot("beer", 28.8, 1)
+        .move(0.1, 3.5, 1.12, 1121, 900)
+        .cut(3.9, 1)
+        .move(5.9, 2.7, 1.24, 1120, 560, "power2.inOut")  // the three best
+        .move(10.4, 2.2, 1, 960, 540, "power2.inOut");    // approve, the receipt
+
+      // 4 · shop (41.6 → 57.4)
+      shot("shop", 41.6, 1.5, 880, 330)
+        .move(0, 5.4, 1.56, 900, 336, "none")     // My vouchers, the agent's row
+        .cut(5.5, 1)                              // the order page
+        .move(10.4, 2.8, 1.24, 960, 504, "power2.inOut")  // Who bought this + What the shop recorded
+        .move(13.2, 2.6, 1.3, 960, 504, "none");
+
+      // 5 · console (57.4 → 69.8, 69.8 → 78.4)
+      shot("con1", 57.4, 1)
+        .move(4.0, 2.6, 1.3, 1530, 520, "power2.inOut")   // the order: payment, rail, reference
+        .move(8.0, 2.4, 1.3, 1530, 640, "power2.inOut");  // the agent's side behind it
+      shot("con2", 69.8, 1.3, 1530, 760)
+        .move(5.6, 2.6, 1, 960, 540, "power2.inOut");     // refunded: out to the list
+
+      // 6 · venue (78.4 → 88.6)
+      shot("venue", 78.4, 1)
+        .move(1.8, 2.5, 1.28, 1530, 600, "power2.inOut")
+        .move(7.0, 2.4, 1.06, 1200, 300, "power2.inOut"); // used; Served 1 above
+
+      // 7 · after (88.6 → 102, 102 → 109)
+      shot("after1", 88.6, 1)
+        .move(1.4, 2.6, 1.3, 770, 370, "power2.inOut")    // used and refunded, side by side
+        .move(5.2, 2.4, 1.3, 1510, 560, "power2.inOut")   // the spa: the ticket
+        .move(8.6, 2.6, 1.3, 1510, 660, "sine.inOut");    // Paid, Approved · Web
+      shot("after2", 102, 1.14, 960, 520)
+        .move(0, 7, 1.22, 960, 560, "none");              // the evidence page, cross-checked
+
+      // Captions fade in and out on their inner plate.
+      const caps = [["#c1", 8, 12], ["#c2", 21, 7.3], ["#c3", 33.3, 7.8], ["#c4", 47.6, 9.3],
+        ["#c5", 58.4, 12.4], ["#c6", 79.4, 8.7], ["#c7", 89.6, 12]];
+      for (const [id, start, dur] of caps) {
+        const span = id + " span";
+        tl.fromTo(span, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, start);
+        tl.to(span, { opacity: 0, duration: 0.45, ease: "power1.in" }, start + dur - 0.5);
+      }
+
+      // Close
+      tl.fromTo("#close .lockup", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, 109.25);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

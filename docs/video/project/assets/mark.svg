@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- License to Deal: a ticket, the thing an agent buys for you. -->
+  <rect width="64" height="64" rx="14" fill="#0d0d0d"/>
+  <path fill="#fff" d="M14 20h36a4 4 0 0 1 4 4v3.5a4.5 4.5 0 0 0 0 9V40a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4v-3.5a4.5 4.5 0 0 0 0-9V24a4 4 0 0 1 4-4z"/>
+  <path d="M40 22v20" stroke="#0d0d0d" stroke-width="2.4" stroke-dasharray="3 3" stroke-linecap="round"/>
+  <path d="M18 32l5 5 9-10" fill="none" stroke="#0d0d0d" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
