@@ -3,7 +3,8 @@
 A stub: every checkout passes. The real checks replace `run_checks` and keep
 its signature, so nothing else in the shop changes:
 
-  1. Agent signature    401 signature_missing / signature_invalid
+  1. Agent signature    401 signature_missing / signature_invalid /
+                        signature_expired / signature_replayed
   2. Buyer's approval   403 approval_invalid
   3. Unchanged since    409 requires_consent
   4. Capacity           409 sold_out

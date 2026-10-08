@@ -23,6 +23,7 @@ the matching public key in the agent's profile, whose address travels in the
 import base64
 import hashlib
 import pathlib
+import secrets
 import time
 from urllib.parse import urlsplit
 
@@ -32,6 +33,9 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 import httpx
 
 _ES256_COORD_BYTES = 32
+# How long a shop may accept one of our signatures. Short, so a copied request
+# is useless soon; the card networks' agent protocols allow at most 8 minutes.
+_SIGNATURE_LIFETIME_SECONDS = 300
 
 
 def _normalize_authority(host: str) -> str:
@@ -73,7 +77,8 @@ class RequestSigner(httpx.Auth):
 
   It signs the method, authority and path (and the query when there is one),
   the content digest and type of a request with a body, and the
-  idempotency-key and ucp-agent headers when the request carries them.
+  idempotency-key and ucp-agent headers when the request carries them. Each
+  signature expires after five minutes and carries a one-time nonce.
   """
 
   requires_request_body = True
@@ -108,9 +113,14 @@ class RequestSigner(httpx.Auth):
       components.append("ucp-agent")
 
     created = int(time.time())
+    expires = created + _SIGNATURE_LIFETIME_SECONDS
+    # A fresh random nonce per request: a shop that sees the same one twice
+    # knows the request was copied.
+    nonce = _b64u(secrets.token_bytes(16))
     raw_params = (
       "(" + " ".join(f'"{c}"' for c in components) + ")"
-      f';created={created};keyid="{self._kid}"'
+      f';created={created};expires={expires};keyid="{self._kid}"'
+      f';nonce="{nonce}"'
     )
 
     def resolve(name: str) -> str:

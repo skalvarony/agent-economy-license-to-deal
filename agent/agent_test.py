@@ -1213,3 +1213,38 @@ def test_reasoning_effort_goes_only_to_models_that_take_it():
     brain = ModelBrain("k", "Test Buyer", model, http=http)
     asyncio.run(brain.step([{"role": "person", "text": "hi"}], []))
     assert seen[-1].get("reasoning_effort") == expected, model
+
+
+def test_signature_carries_expires_and_a_fresh_nonce():
+  """Every signed request has expires (created + 300) and its own nonce."""
+  import re
+  import time
+
+  from cryptography.hazmat.primitives.asymmetric import ec
+  from signing import RequestSigner
+
+  signer = RequestSigner(ec.generate_private_key(ec.SECP256R1()), "kid-1")
+  seen = []
+
+  def answer(request):
+    seen.append(request.headers["Signature-Input"])
+    return httpx.Response(200)
+
+  async def send_twice():
+    async with httpx.AsyncClient(
+      transport=httpx.MockTransport(answer), auth=signer
+    ) as http:
+      await http.get("https://shop.example/catalog")
+      await http.get("https://shop.example/catalog")
+
+  before = int(time.time())
+  asyncio.run(send_twice())
+  nonces = []
+  for header in seen:
+    created = int(re.search(r";created=(\d+)", header).group(1))
+    expires = int(re.search(r";expires=(\d+)", header).group(1))
+    nonces.append(re.search(r';nonce="([A-Za-z0-9_-]{22})"', header).group(1))
+    assert before <= created <= before + 5
+    assert expires == created + 300
+    assert ';keyid="kid-1"' in header
+  assert len(nonces) == 2 and nonces[0] != nonces[1]

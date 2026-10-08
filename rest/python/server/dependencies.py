@@ -77,8 +77,8 @@ async def verify_signature(request: Request) -> None:
 
   * When set, a missing or invalid signature is rejected with the spec's
     error code (401 ``signature_missing`` / ``signature_invalid`` /
-    ``key_not_found``, 400 ``digest_mismatch`` / ``algorithm_unsupported``,
-    etc.).
+    ``key_not_found`` / ``signature_expired`` / ``signature_replayed``,
+    400 ``digest_mismatch`` / ``algorithm_unsupported``, etc.).
   * When unset (the default), signatures are still verified when present and
     the outcome is logged, but unsigned or invalid requests are allowed. This
     keeps the sample interoperable with clients that do not yet sign.
@@ -135,6 +135,8 @@ async def verify_signature(request: Request) -> None:
       headers,
       body,
       keys,
+      max_age=config.FLAGS.signature_max_age_seconds,
+      require_nonce=config.FLAGS.require_signature_nonce,
     )
   except ucp_signing.SignatureError as exc:
     request.state.signature = {
@@ -143,6 +145,9 @@ async def verify_signature(request: Request) -> None:
       "message": exc.message,
     }
     if enforcing:
+      logger.warning(
+        "Request signature refused (%s: %s)", exc.code, exc.message
+      )
       raise _signature_http_error(exc) from exc
     logger.warning(
       "Request signature verification failed (%s: %s); allowing because "

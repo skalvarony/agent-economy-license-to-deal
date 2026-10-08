@@ -108,6 +108,21 @@ try:
     "unsigned or invalid requests are allowed and only logged.",
   )
   flags.DEFINE_boolean(
+    "require_signature_nonce",
+    False,
+    "Refuse a signed request whose signature carries no nonce (401 "
+    "signature_invalid). A nonce is what lets the shop notice a copied "
+    "request being replayed. False here so older clients keep working; the "
+    "deployed shops turn it on (REQUIRE_SIGNATURE_NONCE=1, the default in "
+    "docker-entrypoint.sh).",
+  )
+  flags.DEFINE_integer(
+    "signature_max_age_seconds",
+    300,
+    "How long after `created` a signature without `expires` is still "
+    "accepted. Signatures with `expires` are held to it instead.",
+  )
+  flags.DEFINE_boolean(
     "allow_insecure_profile_urls",
     False,
     "Permit http and loopback/private UCP-Agent profile URLs when resolving "

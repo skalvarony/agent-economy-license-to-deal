@@ -74,7 +74,14 @@ Both end in the same checkout code, order, voucher, payment and ledger events.
 
 With `REQUIRE_SIGNATURES=1` (the default on the server) an unsigned request
 gets `401 signature_missing`, a wrong key `401 signature_invalid`, and a
-profile that is not public https `400 invalid_profile_url`. If the total
+profile that is not public https `400 invalid_profile_url`. Each signature
+also carries `expires` (five minutes after `created`, and never more than
+eight) and a random `nonce`. A signature past its `expires`, made in the
+future, or older than five minutes without `expires` gets `401
+signature_expired`. The same nonce a second time inside its window gets `401
+signature_replayed`, so a copied request is useless. With `REQUIRE_SIGNATURE_NONCE=1`
+(also the default) a signature without a nonce gets `401 signature_invalid`.
+The shop remembers nonces in memory, one process per shop. `scripts/replay-demo.py` shows it: one signed request, sent twice. If the total
 moved since the agent last fetched the checkout, `complete` answers
 `409 requires_consent` and charges nothing. Each agent order records the
 agent's profile, the outcome of the signature check and when it was placed.

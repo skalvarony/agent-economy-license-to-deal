@@ -5,6 +5,7 @@
 #   SIMULATION_SECRET   the header value merchant actions need (required)
 #   DEMO_PASSWORD       password of the demo account (else the one in users.csv)
 #   REQUIRE_SIGNATURES  1 (default) turns away unsigned agents
+#   REQUIRE_SIGNATURE_NONCE  1 (default) turns away signatures with no nonce
 #   ALLOW_INSECURE_PROFILES  1 lets agents publish http/private profile URLs
 #   SECURE_COOKIES      1 (default) marks cookies Secure; 0 for plain http
 #   PAYMENT_RAIL        mock (default) or stripe; stripe needs
@@ -28,6 +29,7 @@ fi
 
 FLAGS=""
 [ "${REQUIRE_SIGNATURES:-1}" = "1" ] && FLAGS="$FLAGS --require_signatures"
+[ "${REQUIRE_SIGNATURE_NONCE:-1}" = "1" ] && FLAGS="$FLAGS --require_signature_nonce"
 [ "${ALLOW_INSECURE_PROFILES:-0}" = "1" ] && FLAGS="$FLAGS --allow_insecure_profile_urls"
 [ "${SECURE_COOKIES:-1}" = "1" ] && FLAGS="$FLAGS --secure_cookies"
 
