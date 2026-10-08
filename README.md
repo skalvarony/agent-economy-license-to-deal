@@ -22,9 +22,12 @@ python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking f
 scripts/shops.sh stop
 ```
 
-Tests: `cd rest/python/server && uv run pytest` (340). Each shop also ships
-as a container (`docker build rest/python/server`); `SHOP`, `SIMULATION_SECRET`
-and the other knobs are listed at the top of `docker-entrypoint.sh`.
+Tests: `cd rest/python/server && uv run pytest` (340). Browser tests in
+`tests-e2e/` (Node 22.12+, shops running): `npm install && npx playwright
+install chromium` once, then `npm test` (five shop flows). They use exact
+checks and need no model. Each shop also ships as a container (`docker build
+rest/python/server`); `SHOP`, `SIMULATION_SECRET` and the other knobs are
+listed at the top of `docker-entrypoint.sh`.
 
 `deploy/` runs it all on one VM with Docker Compose and Caddy; its `README.md`
 has the steps. Secrets live only in the VM's `deploy/.env`.
@@ -129,3 +132,4 @@ the merchant; the agent's decisions until a model is connected.
 - `scripts/`: start and stop the shops; the smoke test.
 - `deploy/`: Dockerfiles are in each app; here the Compose file, Caddyfile,
   `.env.example`, the front page and the steps.
+- `tests-e2e/`: browser tests, the only Node code in the repo.
