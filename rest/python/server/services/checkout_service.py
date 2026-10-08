@@ -42,6 +42,7 @@ import config
 import db
 from enums import CheckoutStatus
 from exceptions import CheckoutNotModifiableError
+from exceptions import ConsentRequiredError
 from exceptions import IdempotencyConflictError
 from exceptions import InvalidRequestError
 from exceptions import OutOfStockError
@@ -53,6 +54,11 @@ from models import UnifiedCheckoutCreateRequest
 from models import UnifiedCheckoutUpdateRequest
 from pydantic import AnyUrl
 from pydantic import BaseModel
+from services import account_service
+from services import coin_service
+from services import ledger
+from services import payment_rail
+from services import voucher_service
 from services.fulfillment_service import FulfillmentService
 from sqlalchemy.ext.asyncio import AsyncSession
 import ucp_signing
@@ -421,6 +427,12 @@ class CheckoutService:
     # Validate inventory and recalculate totals (Server is authority)
     await self._enrich_and_recalculate(checkout)
     await self._validate_inventory(checkout)
+    await voucher_service.check_purchase_limits(
+      self.products_session,
+      self.transactions_session,
+      checkout,
+      count_history=False,
+    )
 
     checkout.status = CheckoutStatus.READY_FOR_COMPLETE
 
@@ -446,6 +458,11 @@ class CheckoutService:
     )
 
     await self.transactions_session.commit()
+    ledger.emit(
+      "CHECKOUT_CREATED",
+      checkout_id=checkout.id,
+      detail={"total": self._total_amount(checkout)},
+    )
 
     return checkout
 
@@ -665,12 +682,21 @@ class CheckoutService:
     if getattr(checkout_req, "discounts", None):
       existing.discounts = checkout_req.discounts
 
+    if getattr(checkout_req, "coins", None) is not None:
+      existing.coins = checkout_req.coins
+
     if platform_config:
       existing.platform = platform_config
 
     # Validate inventory and recalculate totals (Server is authority)
     await self._enrich_and_recalculate(existing)
     await self._validate_inventory(existing)
+    await voucher_service.check_purchase_limits(
+      self.products_session,
+      self.transactions_session,
+      existing,
+      count_history=False,
+    )
 
     response_body = existing.model_dump(
       mode="json", by_alias=True, exclude_none=True
@@ -702,8 +728,22 @@ class CheckoutService:
     risk_signals: dict[str, Any],
     idempotency_key: str,
     checkout_complete: CheckoutCompleteRequest | None = None,
+    channel: str = "agent",
+    agent: str | None = None,
+    visit: dict[str, Any] | None = None,
+    signature: dict[str, Any] | None = None,
+    agent_context: dict[str, Any] | None = None,
   ) -> Checkout:
-    """Complete a checkout session."""
+    """Complete a checkout session.
+
+    `channel` is the door the buyer came through: 'agent' (UCP, with the
+    agent's profile in `agent` and what the shop found out about its request
+    signature in `signature`) or 'web' (with what the request told about its
+    sender in `visit`; see services/visitor.py). An agent may also say in
+    `agent_context` how its customer came to the purchase: who proposed it,
+    through which channel the yes came and when, and where its records are.
+    The shop keeps it on the order, as told, for the customer to see.
+    """
     logger.info("Completing checkout session %s", checkout_id)
 
     # Idempotency Check
@@ -740,9 +780,40 @@ class CheckoutService:
 
     checkout = await self._get_and_validate_checkout(checkout_id)
     self._ensure_modifiable(checkout, "complete")
+    await self._ensure_unchanged(checkout)
+    await voucher_service.check_purchase_limits(
+      self.products_session,
+      self.transactions_session,
+      checkout,
+      count_history=True,
+    )
 
-    # Process Payment
-    await self._process_payment(payment)
+    # What the card pays, after any coins. Nothing, if they cover it all.
+    total = self._total_amount(checkout)
+    coins_spent = coin_service.applied(checkout)
+
+    def declined(refusal: PaymentFailedError) -> None:
+      # A decline is worth a line: the console counts them.
+      ledger.emit(
+        "PAYMENT_DECLINED",
+        checkout_id=checkout.id,
+        detail={
+          "total": total,
+          "code": refusal.code,
+          "message": refusal.message,
+          "channel": channel,
+          "agent": agent,
+        },
+      )
+
+    # Check the payment instrument. The rail gets its credential below.
+    credential_token = None
+    if total:
+      try:
+        credential_token = await self._process_payment(payment)
+      except PaymentFailedError as refusal:
+        declined(refusal)
+        raise
 
     # Validate Fulfillment (Required for completion in this implementation)
     fulfillment_valid = False
@@ -758,10 +829,28 @@ class CheckoutService:
         if fulfillment_valid:
           break
 
-    if not fulfillment_valid:
+    # Vouchers are delivered with the order, so there is nothing to ship.
+    is_voucher_checkout = await voucher_service.is_voucher_checkout(
+      self.products_session, checkout
+    )
+
+    if not fulfillment_valid and not is_voucher_checkout:
       raise InvalidRequestError(
         "Fulfillment address and option must be selected before completion."
       )
+
+    # Lock the total on the payment rail. It is captured once the order is
+    # built, and given back if anything below fails.
+    rail = payment_rail.get_rail()
+    payment_id = None
+    if total:
+      try:
+        payment_id = await rail.lock(
+          total, checkout.currency, checkout.id, credential_token
+        )
+      except PaymentFailedError as refusal:
+        declined(refusal)
+        raise
 
     # Atomic Inventory Reservation + Order Completion
     try:
@@ -879,10 +968,54 @@ class CheckoutService:
         fulfillment=OrderFulfillment(expectations=expectations, events=[]),
       )
 
-      await db.save_order(
+      order_data = order.model_dump(mode="json", by_alias=True)
+      voucher_codes = await voucher_service.issue_vouchers(
+        self.products_session,
         self.transactions_session,
-        order.id,
-        order.model_dump(mode="json", by_alias=True),
+        order_data,
+        buyer_email=getattr(checkout.buyer, "email", None),
+      )
+      if payment_id:
+        await rail.capture(payment_id)
+      buyer_email = getattr(checkout.buyer, "email", None)
+      coins_earned = await coin_service.settle(
+        self.transactions_session,
+        order_id,
+        buyer_email and str(buyer_email),
+        coins_spent,
+        total,
+      )
+      # The split the buyer approved: `amount` by card, `coins` from the
+      # wallet. A refund sends each part back where it came from.
+      order_data["payment"] = {
+        "rail": rail.name,
+        "payment_id": payment_id,
+        "status": "captured",
+        "amount": total,
+        "currency": checkout.currency,
+        "coins": coins_spent,
+        "coins_earned": coins_earned,
+      }
+      order_data["buyer"] = {
+        "email": str(buyer_email).lower() if buyer_email else None,
+        "full_name": getattr(checkout.buyer, "full_name", None),
+      }
+      order_data["channel"] = channel
+      order_data["agent"] = agent
+      order_data["placed_at"] = datetime.datetime.now(
+        datetime.timezone.utc
+      ).isoformat()
+      if visit:
+        order_data["visit"] = visit
+      if agent_context:
+        order_data["agent_context"] = agent_context
+      if signature:
+        order_data["signature"] = signature
+
+      await db.save_order(self.transactions_session, order.id, order_data)
+      # The buyer finds the order in their account, whoever placed it.
+      await account_service.link_order(
+        self.transactions_session, order.id, buyer_email
       )
 
       await db.save_checkout(
@@ -912,12 +1045,37 @@ class CheckoutService:
       # Commit both inventory updates and checkout status update atomically
       await self.transactions_session.commit()
 
-      # Notify webhook of order placement
-      await self._notify_webhook(checkout, "order_placed")
-
     except Exception as e:
       await self.transactions_session.rollback()
+      if payment_id:
+        await rail.refund(payment_id, total)
       raise e
+
+    ledger.emit(
+      "PAYMENT_CONFIRMED",
+      checkout_id=checkout.id,
+      payment_id=payment_id,
+      detail={
+        "order_id": order_id,
+        "amount": total,
+        "coins": coins_spent,
+        "channel": channel,
+        "agent": agent,
+        "visit": visit,
+        "signature": signature and signature["status"],
+        "agent_context": agent_context,
+      },
+    )
+    if voucher_codes:
+      ledger.emit(
+        "VOUCHER_ISSUED",
+        checkout_id=checkout.id,
+        payment_id=payment_id,
+        detail={"order_id": order_id, "vouchers": len(voucher_codes)},
+      )
+
+    # Notify webhook of order placement
+    await self._notify_webhook(checkout, "order_placed")
 
     return checkout
 
@@ -1187,6 +1345,43 @@ class CheckoutService:
         f"Cannot {action} checkout in state '{checkout.status}'"
       )
 
+  def _total_amount(self, checkout: Checkout) -> int:
+    """Return the checkout's grand total in cents."""
+    return next(t.amount for t in checkout.totals if t.type == "total")
+
+  async def _ensure_unchanged(self, checkout: Checkout) -> None:
+    """Refuse to complete a checkout whose total moved since it was last sent.
+
+    The buyer approved the total the platform last saw. If the shop's prices
+    or fees changed since, the new total is saved for the platform to fetch
+    and show the buyer again, and nothing is charged.
+    """
+    # Recalculate on a copy, so an unchanged checkout completes exactly as it
+    # was loaded.
+    current = checkout.model_copy(deep=True)
+    await self._enrich_and_recalculate(current)
+    seen_total = self._total_amount(checkout)
+    new_total = self._total_amount(current)
+    if new_total == seen_total:
+      return
+
+    await db.save_checkout(
+      self.transactions_session,
+      current.id,
+      current.status,
+      current.model_dump(mode="json", by_alias=True, exclude_none=True),
+    )
+    await self.transactions_session.commit()
+    ledger.emit(
+      "CHECKOUT_CHANGED",
+      checkout_id=checkout.id,
+      detail={"approved_total": seen_total, "new_total": new_total},
+    )
+    raise ConsentRequiredError(
+      f"The total changed from {seen_total} to {new_total} after it was"
+      " shown to the buyer. Fetch the checkout and ask the buyer again."
+    )
+
   async def _validate_inventory(
     self,
     checkout: Checkout,
@@ -1214,6 +1409,7 @@ class CheckoutService:
       # Use authoritative price and title from DB
       line.item.price = product.price
       line.item.title = product.title
+      await voucher_service.attach_terms(self.products_session, line)
 
       base_amount = product.price * line.quantity
       line.totals = [
@@ -1225,6 +1421,15 @@ class CheckoutService:
     checkout.totals = []
     # Always include subtotal for clarity when other costs might be added
     checkout.totals.append(TotalResponse(type="subtotal", amount=grand_total))
+
+    booking_fee = await voucher_service.booking_fee(self.transactions_session)
+    if booking_fee:
+      grand_total += booking_fee
+      checkout.totals.append(
+        TotalResponse(
+          type="fee", display_text="Booking fee", amount=booking_fee
+        )
+      )
 
     # Fulfillment Logic
     if checkout.fulfillment and checkout.fulfillment.methods:
@@ -1387,10 +1592,20 @@ class CheckoutService:
               TotalResponse(type="discount", amount=-discount_amount)
             )
 
+    # Coins come off last: the total is what is left to pay by card.
+    grand_total = await coin_service.apply(
+      self.transactions_session, checkout, grand_total
+    )
+
     checkout.totals.append(TotalResponse(type="total", amount=grand_total))
 
-  async def _process_payment(self, payment: PaymentCreateRequest) -> None:
-    """Validate and process payment instruments."""
+  async def _process_payment(self, payment: PaymentCreateRequest) -> str | None:
+    """Check the payment instrument; return the token the rail will charge.
+
+    The mock handler decides here, by its token, whether the payment goes
+    through. The `stripe` handler only checks the token's shape (a payment
+    method, `pm_…`): Stripe itself decides when the rail locks the amount.
+    """
     instruments = payment.instruments
     if not instruments:
       raise InvalidRequestError("Missing payment instruments")
@@ -1421,7 +1636,7 @@ class CheckoutService:
         "Processing card payment for card ending in %s",
         number[-4:] if number else "unknown",
       )
-      return
+      return None
     elif credential.type == "token":
       token = getattr(credential, "token", None)
     elif isinstance(credential, dict):
@@ -1432,7 +1647,7 @@ class CheckoutService:
           "Processing card payment for card ending in %s",
           number[-4:] if number else "unknown",
         )
-        return
+        return None
       elif type_val == "token":
         token = credential.get("token")
     else:
@@ -1441,9 +1656,16 @@ class CheckoutService:
       logger.warning("Unknown credential type: %s", type(credential))
       token = getattr(credential, "token", None)
 
+    if handler_id == payment_rail.StripeRail.name:
+      if not token or not token.startswith("pm_"):
+        raise PaymentFailedError(
+          "The stripe handler takes a PaymentMethod (pm_…) as the token",
+          code="UNKNOWN_TOKEN",
+        )
+      return token
     if handler_id == "mock_payment_handler":
       if token == "success_token":
-        return  # Success
+        return token  # Success
       elif token == "fail_token":
         raise PaymentFailedError(
           "Payment Failed: Insufficient Funds (Mock)",
@@ -1461,13 +1683,13 @@ class CheckoutService:
         )
     elif handler_id == "google_pay":
       # Accept any token for now, or specific ones
-      return
+      return token
     elif handler_id == "shop_pay":
       # For shop_pay, we expect a 'shop_token' credential type.
       # Since we don't have a real backend, we accept it if present.
       # The token value validation logic is similar to mock_payment_handler
       # for this test. Or just accept any token.
-      return
+      return token
     else:
       # Unknown handler
       raise InvalidRequestError(f"Unsupported payment handler: {handler_id}")

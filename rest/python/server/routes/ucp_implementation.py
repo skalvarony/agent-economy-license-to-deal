@@ -21,11 +21,15 @@ import logging
 import re
 from typing import Annotated, Any
 
+import approval_checks
+import config as server_config
 import dependencies
+from exceptions import UcpError
 from fastapi import APIRouter
 from fastapi import Body
 from fastapi import Depends
 from fastapi import Path
+from fastapi import Request
 from fastapi.routing import APIRoute
 import httpx
 import models
@@ -38,6 +42,7 @@ from pydantic import BaseModel
 from pydantic import HttpUrl
 from services.cart_service import CartService
 from services.checkout_service import CheckoutService
+import ucp_signing
 from ucp_sdk.models.schemas.shopping.checkout_complete_request import (
   CheckoutCompleteRequest,
 )
@@ -84,9 +89,18 @@ async def extract_webhook_url(ucp_agent: str) -> str | None:
     return None
 
   profile_uri = match.group(1)
+  # The same rule as for signing keys: https and public hosts only, unless
+  # --allow_insecure_profile_urls says this is a localhost demo.
+  try:
+    ucp_signing.assert_profile_url_allowed(
+      profile_uri, server_config.FLAGS.allow_insecure_profile_urls
+    )
+  except ucp_signing.SignatureError as refused:
+    logger.warning("Not fetching profile %s: %s", profile_uri, refused.message)
+    return None
 
   try:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=5) as client:
       response = await client.get(profile_uri)
       if response.status_code != 200:
         logger.error(
@@ -205,7 +219,30 @@ async def update_checkout(
   )
 
 
+AGENT_CONTEXT_KEYS = (
+  "agent_name",
+  "proposed_by",
+  "approved_via",
+  "approved_at",
+  "proposal_id",
+  "records_url",
+)
+
+
+def _told_by_agent(context: dict[str, Any] | None) -> dict[str, Any] | None:
+  """Keep only the known keys of an agent's context, as short strings."""
+  if not isinstance(context, dict):
+    return None
+  kept = {
+    key: str(context[key])[:300]
+    for key in AGENT_CONTEXT_KEYS
+    if isinstance(context.get(key), str) and context[key]
+  }
+  return kept or None
+
+
 async def complete_checkout(
+  request: Request,
   checkout_id: Annotated[str, Path(..., alias="id")],
   payment: Annotated[dict[str, Any], Body(...)],
   risk_signals: Annotated[dict[str, Any], Body(...)],
@@ -217,9 +254,26 @@ async def complete_checkout(
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
   checkout_complete: Annotated[CheckoutCompleteRequest | None, Body()] = None,
+  agent_context: Annotated[dict[str, Any] | None, Body()] = None,
 ) -> models.UnifiedCheckout:
-  """Complete Checkout Implementation."""
-  del common_headers  # Unused
+  """Complete Checkout Implementation.
+
+  `agent_context` is optional and outside UCP: an agent's account of how its
+  customer decided (see CheckoutService.complete_checkout). Only short
+  strings are kept, so a shop never stores more than it can show.
+  """
+  profile = re.search(r'profile="([^"]+)"', common_headers.ucp_agent)
+
+  failure = approval_checks.run_checks(
+    headers=dict(request.headers),
+    body=await request.json(),
+    checkout_jwt=None,
+    seller_state={"checkout_id": checkout_id},
+  )
+  if failure:
+    raise UcpError(
+      failure["error"], code=failure["error"], status_code=failure["status"]
+    )
 
   # Parse payment into PaymentCreateRequest
   payment_req = PaymentCreateRequest(**payment)
@@ -230,6 +284,10 @@ async def complete_checkout(
     risk_signals,
     idempotency_key,
     checkout_complete=checkout_complete,
+    channel="agent",
+    agent=profile.group(1) if profile else None,
+    signature=getattr(request.state, "signature", None),
+    agent_context=_told_by_agent(agent_context),
   )
 
 

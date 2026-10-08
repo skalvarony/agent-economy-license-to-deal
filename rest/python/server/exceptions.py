@@ -136,6 +136,45 @@ class InvalidRequestError(UcpError):
     )
 
 
+class ConsentRequiredError(UcpError):
+  """Raised when a checkout changed after the platform last saw it."""
+
+  def __init__(self, message: str):
+    """Initialize ConsentRequiredError."""
+    super().__init__(
+      message,
+      code="requires_consent",
+      status_code=409,
+      severity=ErrorSeverity.REQUIRES_BUYER_REVIEW,
+    )
+
+
+class PurchaseLimitError(UcpError):
+  """Raised when a buyer asks for more units of a deal than one person may."""
+
+  def __init__(self, message: str):
+    """Initialize PurchaseLimitError."""
+    super().__init__(
+      message,
+      code="PURCHASE_LIMIT_REACHED",
+      status_code=409,
+      severity=ErrorSeverity.UNRECOVERABLE,
+    )
+
+
+class VoucherStateError(UcpError):
+  """Raised when a voucher action doesn't fit the voucher's current state."""
+
+  def __init__(self, message: str):
+    """Initialize VoucherStateError."""
+    super().__init__(
+      message,
+      code="VOUCHER_STATE_CONFLICT",
+      status_code=409,
+      severity=ErrorSeverity.UNRECOVERABLE,
+    )
+
+
 class UcpVersionError(UcpError):
   """Raised when a UCP version string is invalid or unsupported."""
 

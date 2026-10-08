@@ -97,6 +97,8 @@ class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):
   discounts: DiscountsObject | None = None
   buyer_consent: Any | None = None
   cart_id: str | None = None
+  # {"use": n}: how many of the buyer's coins to pay with.
+  coins: Any | None = None
 
   @model_validator(mode="after")
   def validate_cart_id_or_line_items(self) -> "UnifiedCheckoutCreateRequest":
@@ -112,6 +114,8 @@ class UnifiedCheckoutUpdateRequest(CheckoutUpdateRequest):
   fulfillment: Fulfillment | None = None
   discounts: DiscountsObject | None = None
   buyer_consent: Any | None = None
+  # {"use": n}: how many of the buyer's coins to pay with.
+  coins: Any | None = None
 
 
 UnifiedCheckout.model_rebuild()

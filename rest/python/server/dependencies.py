@@ -96,6 +96,8 @@ async def verify_signature(request: Request) -> None:
   """
   headers = {k.lower(): v for k, v in request.headers.items()}
   enforcing = config.FLAGS.require_signatures
+  # What was found out about the signature, for the order to keep.
+  request.state.signature = {"status": "missing"}
 
   if "signature-input" not in headers or "signature" not in headers:
     if enforcing:
@@ -135,6 +137,11 @@ async def verify_signature(request: Request) -> None:
       keys,
     )
   except ucp_signing.SignatureError as exc:
+    request.state.signature = {
+      "status": "failed",
+      "code": exc.code,
+      "message": exc.message,
+    }
     if enforcing:
       raise _signature_http_error(exc) from exc
     logger.warning(
@@ -144,6 +151,11 @@ async def verify_signature(request: Request) -> None:
       exc.message,
     )
     return
+  request.state.signature = {
+    "status": "verified",
+    "keyid": keyid,
+    "profile": match.group(1),
+  }
   logger.info(
     "RFC 9421 signature verified (keyid=%s, profile=%s)",
     keyid,

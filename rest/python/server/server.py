@@ -26,9 +26,12 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import generated_routes.ucp_routes
+from routes.catalog import router as catalog_router
 from routes.discovery import router as discovery_router
 from routes.mcp import router as mcp_router
 from routes.order import router as order_router
+from routes.voucher import router as voucher_router
+from routes.wallet import router as wallet_router
 import routes.ucp_implementation
 import uvicorn
 
@@ -129,6 +132,9 @@ app.include_router(generated_routes.ucp_routes.router)
 app.include_router(order_router)
 app.include_router(discovery_router)
 app.include_router(mcp_router)
+app.include_router(catalog_router)
+app.include_router(voucher_router)
+app.include_router(wallet_router)
 
 
 def main(argv: Sequence[str]) -> None:
@@ -148,7 +154,15 @@ def main(argv: Sequence[str]) -> None:
     print(config.FLAGS.main_module_help())  # noqa: T201
     sys.exit(1)
 
-  uvicorn.run(app, host="0.0.0.0", port=config.FLAGS.port)
+  uvicorn.run(
+    app,
+    host="0.0.0.0",
+    port=config.FLAGS.port,
+    # Behind a reverse proxy, the forwarded headers carry the real scheme
+    # and host, which the catalog's image URLs and the cookies depend on.
+    proxy_headers=True,
+    forwarded_allow_ips="*",
+  )
 
 
 if __name__ == "__main__":

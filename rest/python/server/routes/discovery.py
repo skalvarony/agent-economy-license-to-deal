@@ -17,9 +17,11 @@
 import json
 import pathlib
 import uuid
+import config
 from fastapi import APIRouter
 from fastapi import Request
 from fastapi import Response
+from services import payment_rail
 import webhook_signer
 
 router = APIRouter()
@@ -51,6 +53,9 @@ async def get_merchant_profile(request: Request, response: Response):
   profile_json = template.replace(
     "{{ENDPOINT}}", str(request.base_url).rstrip("/")
   ).replace("{{SHOP_ID}}", SHOP_ID)
+  profile_json = profile_json.replace(
+    "{{SHOP_NAME}}", config.get_shop()["name"]
+  )
 
   profile_data = json.loads(profile_json)
 
@@ -59,7 +64,25 @@ async def get_merchant_profile(request: Request, response: Response):
   # ["ucp"]`, so the served body MUST be `{"ucp": {...}}`. Default
   # payment_handlers INSIDE the ucp object rather than at the document root.
   ucp = profile_data.setdefault("ucp", {})
-  ucp.setdefault("payment_handlers", [])
+  handlers = ucp.setdefault("payment_handlers", {})
+
+  # With Stripe as the rail, say so: an agent pays with a Stripe payment
+  # method (`pm_…`) under the `stripe` handler. The publishable key lets a
+  # buyer tokenise a card with Stripe; the shop never sees the number.
+  if payment_rail.rail_name() == payment_rail.StripeRail.name:
+    handlers["com.stripe"] = [
+      {
+        "id": payment_rail.StripeRail.name,
+        "name": "com.stripe",
+        "version": "2026-04-08",
+        "spec": "https://docs.stripe.com/api/payment_intents",
+        "config": {
+          "publishable_key": payment_rail.publishable_key(),
+          "mode": payment_rail.StripeRail().mode,
+          "credential": "A PaymentMethod id (pm_…) as a token credential.",
+        },
+      }
+    ]
 
   # Publish the webhook-signing public key so platforms can verify our
   # order-event deliveries (order.md, Webhook Signature Verification /

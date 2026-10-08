@@ -693,7 +693,7 @@ def clear_key_cache() -> None:
   _KEY_CACHE.clear()
 
 
-def _assert_profile_url_allowed(url: str, allow_insecure: bool) -> None:
+def assert_profile_url_allowed(url: str, allow_insecure: bool) -> None:
   """Reject profile URLs that violate the spec's transport and SSRF rules.
 
   NOTE: This check is vulnerable to DNS rebinding (TOCTOU) because the IP
@@ -779,7 +779,7 @@ async def fetch_signing_keys(
   if cached and cached[0] > time.time():
     return cached[1]
 
-  _assert_profile_url_allowed(profile_url, allow_insecure)
+  assert_profile_url_allowed(profile_url, allow_insecure)
   try:
     async with httpx.AsyncClient(follow_redirects=False) as client:
       response = await client.get(profile_url, timeout=5.0)

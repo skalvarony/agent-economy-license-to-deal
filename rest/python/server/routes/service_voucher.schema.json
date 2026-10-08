@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Service voucher",
+  "description": "Terms a shop adds to a line item when the item is a voucher for a service: when and where it happens, whether it can be refunded, how it is redeemed and how many one person may buy. A deal is either for a set date or open-dated; an open-dated deal counts its deadlines in days from the purchase, and they become dates on the order. All times are ISO 8601 with an offset.",
+  "type": "object",
+  "required": [
+    "service",
+    "cancellation",
+    "voucher",
+    "redemption"
+  ],
+  "properties": {
+    "service": {
+      "type": "object",
+      "required": [
+        "category"
+      ],
+      "properties": {
+        "deal_id": {
+          "type": "string",
+          "description": "The deal the bought option belongs to."
+        },
+        "option": {
+          "type": "string",
+          "description": "Line items only. The option bought, e.g. '60 minutes'."
+        },
+        "category": {
+          "type": "string"
+        },
+        "merchant": {
+          "type": "string",
+          "description": "Who delivers the service."
+        },
+        "location": {
+          "type": "string"
+        },
+        "window": {
+          "type": "object",
+          "description": "When the service happens, not when it is bought. Absent for open-dated deals, which are booked after buying.",
+          "required": [
+            "not_before",
+            "not_after"
+          ],
+          "properties": {
+            "not_before": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "not_after": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "includes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Line items only. What the option bought includes."
+        }
+      }
+    },
+    "cancellation": {
+      "type": "object",
+      "required": [
+        "refundability"
+      ],
+      "properties": {
+        "refundability": {
+          "enum": [
+            "refundable",
+            "partially_refundable",
+            "non_refundable"
+          ]
+        },
+        "refundable_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last moment a refund is due. On open-dated deals it only exists on the order."
+        },
+        "refund_days": {
+          "type": "integer",
+          "description": "Open-dated deals: days after the purchase in which a refund is due."
+        }
+      }
+    },
+    "voucher": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the promotional value runs out. On open-dated deals it only exists on the order."
+        },
+        "codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Order only. One code per unit bought, shown at the venue to redeem."
+        },
+        "status": {
+          "description": "Order only.",
+          "enum": [
+            "issued",
+            "redeemed",
+            "refunded"
+          ]
+        },
+        "valid_days": {
+          "type": "integer",
+          "description": "Open-dated deals: days after the purchase the promotional value lasts."
+        },
+        "amount_paid_expires": {
+          "type": "boolean",
+          "description": "Whether the amount paid is lost when the promotional value runs out. Always false."
+        }
+      }
+    },
+    "redemption": {
+      "type": "object",
+      "required": [
+        "method"
+      ],
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "status": {
+          "description": "Order only.",
+          "enum": [
+            "unredeemed",
+            "redeemed",
+            "redemption_failed",
+            "cancelled_by_merchant",
+            "cancelled_by_shopper"
+          ]
+        },
+        "appointment_required": {
+          "type": "boolean"
+        },
+        "booking_contact": {
+          "type": "string",
+          "description": "Order only. How to reach the merchant to book."
+        }
+      }
+    },
+    "purchase": {
+      "type": "object",
+      "properties": {
+        "limit_per_person": {
+          "type": "integer",
+          "description": "Most units one person may buy, across the deal's options."
+        },
+        "repurchase_days": {
+          "type": "integer",
+          "description": "Days after which a person may buy again. Absent: never again."
+        }
+      }
+    }
+  }
+}

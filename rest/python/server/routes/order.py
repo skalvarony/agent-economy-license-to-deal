@@ -14,12 +14,16 @@
 
 """Order management routes for the UCP server."""
 
+import re
 from typing import Annotated, Any
 
+import config
 import dependencies
 from fastapi import APIRouter
 from fastapi import Body
 from fastapi import Depends
+from fastapi import Header
+from fastapi import HTTPException
 from fastapi import Path
 from models import UnifiedOrder
 from services.checkout_service import CheckoutService
@@ -40,10 +44,32 @@ async def get_order(
   checkout_service: Annotated[
     CheckoutService, Depends(dependencies.get_checkout_service)
   ],
+  simulation_secret: Annotated[
+    str | None, Header(alias="Simulation-Secret")
+  ] = None,
 ) -> dict[str, Any]:
-  """Get an order by ID."""
-  del common_headers  # Unused
-  return await checkout_service.get_order(order_id)
+  """Get an order by ID.
+
+  An order is shown to the agent that placed it (the UCP-Agent profile the
+  order recorded) or to the shop itself (the Simulation-Secret header). With
+  --require_signatures the profile is proven, not just claimed.
+  """
+  order = await checkout_service.get_order(order_id)
+  if simulation_secret != config.FLAGS.simulation_secret:
+    asked_by = _profile(common_headers.ucp_agent)
+    if not asked_by or asked_by != order.get("agent"):
+      raise HTTPException(
+        status_code=403,
+        detail="Only the agent that placed this order, or the shop, may read"
+        " it",
+      )
+  return order
+
+
+def _profile(ucp_agent: str) -> str | None:
+  """Return the profile URL in a UCP-Agent header."""
+  found = re.search(r'profile="([^"]+)"', ucp_agent or "")
+  return found.group(1) if found else None
 
 
 @router.post(
@@ -71,6 +97,8 @@ async def ship_order(
   "/orders/{id}",
   response_model=dict[str, Any],
   operation_id="update_order",
+  # Only the shop changes an order.
+  dependencies=[Depends(dependencies.verify_simulation_secret)],
 )
 async def update_order(
   order_id: Annotated[str, Path(..., alias="id")],

@@ -313,13 +313,13 @@ class SsrfGuardTest(absltest.TestCase):
   def test_http_rejected_without_carveout(self) -> None:
     """Plain http is rejected unless the insecure carve-out is set."""
     with self.assertRaises(signing.SignatureError) as ctx:
-      signing._assert_profile_url_allowed("http://example.com/p", False)
+      signing.assert_profile_url_allowed("http://example.com/p", False)
     self.assertEqual(ctx.exception.code, "invalid_profile_url")
 
   def test_metadata_address_rejected(self) -> None:
     """The cloud metadata address is rejected."""
     with self.assertRaises(signing.SignatureError):
-      signing._assert_profile_url_allowed(
+      signing.assert_profile_url_allowed(
         "https://169.254.169.254/latest", False
       )
 
@@ -327,16 +327,16 @@ class SsrfGuardTest(absltest.TestCase):
     """Loopback and RFC 1918 hosts are rejected without the carve-out."""
     for url in ("https://127.0.0.1/p", "https://10.0.0.5/p"):
       with self.assertRaises(signing.SignatureError):
-        signing._assert_profile_url_allowed(url, False)
+        signing.assert_profile_url_allowed(url, False)
 
   def test_credentials_rejected(self) -> None:
     """A URL carrying userinfo is rejected."""
     with self.assertRaises(signing.SignatureError):
-      signing._assert_profile_url_allowed("https://u:p@example.com/p", False)
+      signing.assert_profile_url_allowed("https://u:p@example.com/p", False)
 
   def test_loopback_allowed_with_carveout(self) -> None:
     """The carve-out permits http loopback for localhost demos."""
-    signing._assert_profile_url_allowed("http://127.0.0.1:8285/p", True)
+    signing.assert_profile_url_allowed("http://127.0.0.1:8285/p", True)
 
 
 class ProfileFetchTest(absltest.TestCase):
@@ -720,7 +720,7 @@ class SsrfResolveTest(absltest.TestCase):
   def test_unresolvable_host(self) -> None:
     """A DNS failure on the profile host is profile_unreachable (424)."""
     with self.assertRaises(signing.SignatureError) as ctx:
-      signing._assert_profile_url_allowed(
+      signing.assert_profile_url_allowed(
         "https://nonexistent.invalid.example./x", allow_insecure=False
       )
     self.assertEqual(ctx.exception.code, "profile_unreachable")
@@ -728,7 +728,7 @@ class SsrfResolveTest(absltest.TestCase):
   def test_hostless_url_rejected(self) -> None:
     """A URL with no host is invalid_profile_url."""
     with self.assertRaises(signing.SignatureError) as ctx:
-      signing._assert_profile_url_allowed("https:///x", allow_insecure=False)
+      signing.assert_profile_url_allowed("https:///x", allow_insecure=False)
     self.assertEqual(ctx.exception.code, "invalid_profile_url")
 
   def test_public_host_allowed(self) -> None:
@@ -738,7 +738,7 @@ class SsrfResolveTest(absltest.TestCase):
 
     infos = [(socket.AF_INET, None, None, "", ("93.184.216.34", 443))]
     with mock.patch.object(socket, "getaddrinfo", return_value=infos):
-      signing._assert_profile_url_allowed(
+      signing.assert_profile_url_allowed(
         "https://public.example/.well-known/ucp", allow_insecure=False
       )
 

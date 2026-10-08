@@ -23,6 +23,7 @@ Usage:
   --data_dir=...
 """
 
+import os
 import asyncio
 import csv
 import json
@@ -33,12 +34,20 @@ from absl import flags
 import db
 from db import Customer
 from db import CustomerAddress
+from db import CoinEntry
+from db import Deal
+from db import DealOption
+from db import DealReview
 from db import Discount
 from db import Inventory
 from db import PaymentInstrument
 from db import Product
 from db import Promotion
 from db import ShippingRate
+from db import User
+from db import UserSession
+from db import VoucherCode
+from services import account_service
 from sqlalchemy import delete
 
 FLAGS = flags.FLAGS
@@ -49,8 +58,23 @@ flags.DEFINE_string(
 flags.DEFINE_string(
   "data_dir",
   str(Path(__file__).resolve().parent / "data"),
-  "Directory containing products.csv and inventory.csv",
+  "Directory with a shop's data: products.csv and inventory.csv for goods,"
+  " or deals.csv, options.csv and codes.csv for vouchers",
 )
+
+# Deal columns that aren't text, and how to read each from its CSV cell.
+DEAL_NUMBERS = {
+  "rating": float,
+  "reviews": int,
+  "bought": int,
+  "refund_days": int,
+  "voucher_valid_days": int,
+  "limit_per_person": int,
+  "repurchase_days": int,
+  "appointment_required": lambda cell: cell.lower() == "true",
+  # One cell, items separated by '|'.
+  "highlights": lambda cell: [item.strip() for item in cell.split("|")],
+}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,18 +94,89 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Products from CSV...")
       products = []
-      with (data_dir / "products.csv").open() as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-          products.append(
-            Product(
-              id=row["id"],
-              title=row["title"],
-              price=int(row["price"]),
-              image_url=row["image_url"],
+      products_path = data_dir / "products.csv"
+      if products_path.exists():
+        with products_path.open() as f:
+          reader = csv.DictReader(f)
+          for row in reader:
+            products.append(
+              Product(
+                id=row["id"],
+                title=row["title"],
+                price=int(row["price"]),
+                image_url=row["image_url"],
+              )
             )
-          )
       session.add_all(products)
+
+      logger.info("Clearing existing deals and options...")
+      await session.execute(delete(Deal))
+      await session.execute(delete(DealOption))
+
+      logger.info("Importing Deals from CSV...")
+      deal_titles = {}
+      deals_path = data_dir / "deals.csv"
+      if deals_path.exists():
+        with deals_path.open() as f:
+          reader = csv.DictReader(f)
+          for row in reader:
+            # Empty cells (e.g. no refund deadline) are stored as NULL.
+            deal = {k: v or None for k, v in row.items()}
+            for column, cast in DEAL_NUMBERS.items():
+              if deal.get(column) is not None:
+                deal[column] = cast(deal[column])
+            deal_titles[deal["id"]] = deal["title"]
+            session.add(Deal(**deal))
+
+      logger.info("Importing Deal Reviews from CSV...")
+      await session.execute(delete(DealReview))
+      reviews_path = data_dir / "reviews.csv"
+      if reviews_path.exists():
+        with reviews_path.open() as f:
+          session.add_all(
+            DealReview(
+              deal_id=row["deal_id"],
+              author=row["author"],
+              rating=int(row["rating"]),
+              date=row["date"],
+              text=row["text"],
+              reply=row["reply"] or None,
+            )
+            for row in csv.DictReader(f)
+          )
+
+      logger.info("Importing Deal Options from CSV...")
+      options_path = data_dir / "options.csv"
+      if options_path.exists():
+        with options_path.open() as f:
+          reader = csv.DictReader(f)
+          for position, row in enumerate(reader):
+            # Each option is the product a buyer puts in the cart.
+            session.add(
+              Product(
+                id=row["id"],
+                title=f"{deal_titles[row['deal_id']]} · {row['title']}",
+                price=int(row["price"]),
+              )
+            )
+            session.add(
+              DealOption(
+                product_id=row["id"],
+                deal_id=row["deal_id"],
+                title=row["title"],
+                description=row.get("description") or None,
+                # One cell, items separated by '|'.
+                includes=[
+                  item.strip()
+                  for item in (row.get("includes") or "").split("|")
+                  if item.strip()
+                ],
+                list_price=int(row["list_price"])
+                if row.get("list_price")
+                else None,
+                position=position,
+              )
+            )
 
       logger.info("Clearing existing promotions...")
       await session.execute(delete(Promotion))
@@ -121,15 +216,62 @@ async def import_csv_data() -> None:
 
       logger.info("Importing Inventory from CSV...")
       inventory = []
-      with (data_dir / "inventory.csv").open() as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-          inventory.append(
-            Inventory(
-              product_id=row["product_id"], quantity=int(row["quantity"])
+      inventory_path = data_dir / "inventory.csv"
+      if inventory_path.exists():
+        with inventory_path.open() as f:
+          reader = csv.DictReader(f)
+          for row in reader:
+            inventory.append(
+              Inventory(
+                product_id=row["product_id"], quantity=int(row["quantity"])
+              )
             )
-          )
       session.add_all(inventory)
+
+      logger.info("Clearing existing accounts...")
+      await session.execute(delete(UserSession))
+      await session.execute(delete(User))
+
+      logger.info("Importing Accounts from CSV...")
+      users_path = data_dir / "users.csv"
+      if users_path.exists():
+        with users_path.open() as f:
+          for row in csv.DictReader(f):
+            # Seed accounts for the demo; only the hash is stored.
+            await account_service.register(
+              session,
+              row["full_name"],
+              row["email"],
+              # On a shared server, the demo password comes from the
+              # environment, not from the file in the repository.
+              os.environ.get("DEMO_PASSWORD") or row["password"],
+            )
+
+      logger.info("Clearing existing coin wallets...")
+      await session.execute(delete(CoinEntry))
+
+      logger.info("Importing Coin Wallets from CSV...")
+      wallets_path = data_dir / "wallets.csv"
+      if wallets_path.exists():
+        with wallets_path.open() as f:
+          for row in csv.DictReader(f):
+            await db.add_coins(
+              session, row["email"], int(row["coins"]), "granted"
+            )
+
+      logger.info("Clearing existing voucher codes...")
+      await session.execute(delete(VoucherCode))
+
+      logger.info("Importing Voucher Codes from CSV...")
+      codes_path = data_dir / "codes.csv"
+      if codes_path.exists():
+        with codes_path.open() as f:
+          reader = csv.DictReader(f)
+          # An option's pool of codes is its inventory.
+          session.add_all(
+            VoucherCode(code=row["code"], product_id=row["option_id"])
+            for row in reader
+          )
 
       logger.info("Clearing existing customers and addresses...")
       await session.execute(delete(CustomerAddress))

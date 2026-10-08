@@ -25,6 +25,20 @@ from fastapi import FastAPI
 FLAGS = flags.FLAGS
 
 _PROFILE_CACHE = None
+_SHOP_CACHE = None
+
+DEFAULT_SHOP = {
+  "name": "Flower Shop",
+  "tagline": "",
+  "city": "",
+  "accent": "#444444",
+  "hero": "",
+  "hero_sub": "",
+  "promo_code": "",
+  "font": "",
+  # Share of what a buyer pays by card that comes back as coins.
+  "coins_back_percent": 0,
+}
 
 # checkout.json annotates `currency` with `ucp_request: omit` and describes
 # it as "reflecting the merchant's market determination ... buyers provide
@@ -50,6 +64,17 @@ def _get_profile() -> dict:
   with profile_path.open(encoding="utf-8") as f:
     _PROFILE_CACHE = json.load(f)
   return _PROFILE_CACHE
+
+
+def get_shop() -> dict:
+  """Read and cache this shop's identity from --shop_dir/shop.json."""
+  global _SHOP_CACHE
+  if _SHOP_CACHE is None:
+    _SHOP_CACHE = dict(DEFAULT_SHOP)
+    if FLAGS.is_parsed() and FLAGS.shop_dir:
+      with (Path(FLAGS.shop_dir) / "shop.json").open(encoding="utf-8") as f:
+        _SHOP_CACHE.update(json.load(f))
+  return _SHOP_CACHE
 
 
 def get_server_version() -> str:
@@ -89,6 +114,12 @@ try:
     "signer keys. For localhost demos and CI only; never enable in "
     "production, as it disables SSRF protections.",
   )
+  flags.DEFINE_boolean(
+    "secure_cookies",
+    False,
+    "Mark the storefront's cookies Secure. Set it when the shop is served "
+    "over HTTPS (behind a proxy that terminates TLS).",
+  )
   flags.DEFINE_string(
     "webhook_signing_key",
     None,
@@ -112,6 +143,24 @@ try:
     "Delay before the first webhook retry, doubling on each subsequent "
     "retry (exponential backoff).",
     lower_bound=0.0,
+  )
+  flags.DEFINE_string(
+    "shop_dir",
+    None,
+    "Directory with this shop's shop.json (name, tagline, accent colour). "
+    "When unset, the server runs as the unnamed sample shop.",
+  )
+  flags.DEFINE_string(
+    "payment_rail",
+    "mock",
+    "Rail that takes and refunds payments: 'mock' (a labelled simulation) "
+    "or 'stripe' (needs STRIPE_SECRET_KEY; a test key moves no money).",
+  )
+  flags.DEFINE_string(
+    "ledger_path",
+    None,
+    "Append-only JSONL file this shop writes its ledger events to. The demo "
+    "shops share one file. When unset, no events are written.",
   )
 except flags.DuplicateFlagError:
   pass

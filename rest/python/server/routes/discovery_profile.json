@@ -57,6 +57,28 @@
           "schema": "https://ucp.dev/2026-04-08/schemas/shopping/buyer_consent.json",
           "extends": "dev.ucp.shopping.checkout"
         }
+      ],
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog/search",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog/lookup",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json"
+        }
+      ],
+      "com.example.service_voucher": [
+        {
+          "version": "2026-10-08",
+          "spec": "{{ENDPOINT}}/specs/service_voucher",
+          "schema": "{{ENDPOINT}}/schemas/service_voucher.json",
+          "extends": ["dev.ucp.shopping.checkout", "dev.ucp.shopping.order"]
+        }
       ]
     },
     "payment_handlers": {
@@ -89,7 +111,7 @@
             "api_version": 2,
             "api_version_minor": 0,
             "merchant_info": {
-              "merchant_name": "Flower Shop",
+              "merchant_name": "{{SHOP_NAME}}",
               "merchant_id": "TEST",
               "merchant_origin": "localhost"
             },
