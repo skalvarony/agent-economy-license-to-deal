@@ -26,8 +26,9 @@ echo "Stripe (leave empty to keep the mock rail or the current keys):"
 read -rsp "  Secret key (sk_test_…): " STRIPE_SK; echo
 read -rp "  Publishable key (pk_test_…): " STRIPE_PK
 echo "OpenAI, the agents' brain (empty keeps the current key or the scripted brain):"
-read -rsp "  API key (sk-…): " OPENAI; echo
+read -rsp "  API key: " OPENAI; echo
 read -rp "  Model [$(current AGENT_MODEL)]: " MODEL
+read -rp "  Base URL [$(current OPENAI_BASE_URL)] (Anthropic: https://api.anthropic.com/v1): " BASE_URL
 
 hash() { [ -n "$1" ] && docker run --rm caddy:2-alpine caddy hash-password --plaintext "$1" || true; }
 HASH=$(hash "$AGENT_PASSWORD")
@@ -38,7 +39,7 @@ HASH_EMMANOUIL=$(hash "$PW_EMMANOUIL")
 ACME="$ACME" USER_NAME="$USER_NAME" HASH="$HASH" DEMO="$DEMO" \
   HASH_ALVARO="$HASH_ALVARO" HASH_DAVID="$HASH_DAVID" HASH_EMMANOUIL="$HASH_EMMANOUIL" \
   TG_ALVARO="$TG_ALVARO" TG_DAVID="$TG_DAVID" TG_EMMANOUIL="$TG_EMMANOUIL" \
-  STRIPE_SK="$STRIPE_SK" STRIPE_PK="$STRIPE_PK" OPENAI="$OPENAI" MODEL="$MODEL" python3 - <<'PY'
+  STRIPE_SK="$STRIPE_SK" STRIPE_PK="$STRIPE_PK" OPENAI="$OPENAI" MODEL="$MODEL" BASE_URL="$BASE_URL" python3 - <<'PY'
 import os, re, pathlib
 env = pathlib.Path(".env")
 text = env.read_text()
@@ -74,6 +75,7 @@ if os.environ["STRIPE_SK"]:
   put("AGENT_CARD_TOKEN", "pm_card_visa")
 put("OPENAI_API_KEY", os.environ["OPENAI"])
 put("AGENT_MODEL", os.environ["MODEL"])
+put("OPENAI_BASE_URL", os.environ["BASE_URL"])
 if "SIMULATION_SECRET=\n" in text or re.search(r"^SIMULATION_SECRET=$", text, re.M):
   put("SIMULATION_SECRET", os.urandom(24).hex())
 env.write_text(text)

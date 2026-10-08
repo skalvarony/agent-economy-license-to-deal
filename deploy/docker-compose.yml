@@ -59,6 +59,7 @@ services:
       SHOP_C_URL: https://c.${DOMAIN}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       AGENT_BRAIN: ${AGENT_BRAIN:-}
       AGENT_CARD_HANDLER: ${AGENT_CARD_HANDLER:-mock_payment_handler}
       AGENT_CARD_TOKEN: ${AGENT_CARD_TOKEN:-success_token}
@@ -86,6 +87,7 @@ services:
       SHOP_C_URL: https://c.${DOMAIN}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       AGENT_BRAIN: ${AGENT_BRAIN:-}
       AGENT_CARD_HANDLER: ${AGENT_CARD_HANDLER:-mock_payment_handler}
       AGENT_CARD_TOKEN: ${AGENT_CARD_TOKEN:-success_token}
@@ -112,6 +114,7 @@ services:
       SHOP_C_URL: https://c.${DOMAIN}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       AGENT_BRAIN: ${AGENT_BRAIN:-}
       AGENT_CARD_HANDLER: ${AGENT_CARD_HANDLER:-mock_payment_handler}
       AGENT_CARD_TOKEN: ${AGENT_CARD_TOKEN:-success_token}
