@@ -27,6 +27,11 @@ admin.{$DOMAIN}, admin.{$ALT_DOMAIN} {
 	reverse_proxy console:8195
 }
 
+# The venue simulator: the merchants' world. The app asks the team to sign in.
+venue.{$DOMAIN}, venue.{$ALT_DOMAIN} {
+	reverse_proxy venue:8196
+}
+
 # Each person's agent, on its own name. The app asks the person to sign in;
 # its profile (shops fetch it) and its MCP address (secret in the path) are
 # the only open paths.

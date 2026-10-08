@@ -1,0 +1,38 @@
+[project]
+name = "venue-simulator"
+version = "0.1.0"
+description = "The merchants' world: what happens at the venue, and what the marketplace does about it"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.38.0",
+    "httpx>=0.26.0",
+    "bcrypt>=4.0.0",
+    "python-multipart>=0.0.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.14.11",
+]
+
+[tool.ruff]
+line-length = 80
+indent-width = 2
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "C4", "SIM", "N", "UP", "D", "PTH", "T20"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+case-sensitive = true
+
+[tool.ruff.lint.per-file-ignores]
+"*_test.py" = ["D"]

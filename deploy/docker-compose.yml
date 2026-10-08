@@ -1,11 +1,11 @@
-# The three shops, the agents, their console and Caddy (HTTPS) on one machine.
+# The three shops, the agent and Caddy (HTTPS) on one machine.
 #
 #   cp .env.example .env     # then fill it in
 #   docker compose up -d --build
 #
 # The shops share one volume, so their ledger stays one file. Caddy gets
-# and renews the certificates for <DOMAIN>, a., b., c., admin. and the three
-# agents' own names.
+# and renews the certificates for <DOMAIN>, a., b., c., admin., venue. and the
+# three agents' own names.
 
 x-shop: &shop
   build:
@@ -140,6 +140,22 @@ services:
     volumes:
       - console:/data
 
+  venue:
+    build:
+      context: ..
+      dockerfile: venue/Dockerfile
+    restart: unless-stopped
+    environment:
+      SIMULATION_SECRET: ${SIMULATION_SECRET}
+      SHOP_A_URL: http://shop-a:8080
+      SHOP_B_URL: http://shop-b:8080
+      SHOP_C_URL: http://shop-c:8080
+      VENUE_RUN_DIR: /data
+      AGENT_USER: ${AGENT_USER:-}
+      AGENT_PASSWORD_HASH: ${AGENT_PASSWORD_HASH:-}
+    volumes:
+      - venue:/data
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -164,6 +180,7 @@ volumes:
   agent-alvaro:
   agent-david:
   agent-emmanouil:
+  venue:
   console:
   caddy_data:
   caddy_config:

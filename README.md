@@ -13,6 +13,7 @@ left and why.
 | C, Dawn Saver | :8183 | https://c.licensetodeal.app | Wellness, cheaper, non-refundable, no coins |
 | The agents | :8190 | `ltd-agent-alvaro`, `ltd-agent-david`, `ltd-agent-emmanouil` `.duckdns.org` | One per person, on its own name, behind a password |
 | The console | :8195 | https://admin.licensetodeal.app | The shops' side, same password |
+| The venue | :8196 | https://venue.licensetodeal.app | The merchants' world, same password |
 
 ## Run
 
@@ -22,12 +23,14 @@ Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
 scripts/agent.sh start       # http://localhost:8190
 scripts/console.sh start     # http://localhost:8195
+scripts/venue.sh start       # http://localhost:8196
 python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking fee
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
 Tests: `cd rest/python/server && uv run pytest` (340), `cd agent && uv run
-pytest` (40), `cd console && uv run pytest` (16). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
+pytest` (40), `cd console && uv run pytest` (16), `cd venue && uv run pytest`
+(5). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
 running): `npm install && npx playwright install chromium` once, then
 `npm test` (five shop flows) and `npm run test:agent` (three agent flows).
 They use exact checks and need no model. Each shop also ships as a container
@@ -217,6 +220,24 @@ the agents for their records (each order names the agent that placed it, by
 its profile URL; `AGENT_URLS` maps profiles to addresses); it stores nothing
 itself.
 
+## At the venue
+
+The shops are the intermediary; the service happens at a merchant's venue
+they don't control. `venue/` simulates that world for every shop, deal and
+purchase: pick a purchase and say what happened. Each happening is sent to
+the shop as the merchant would send it, and the marketplace's response
+follows, with its consequences shown and logged:
+
+| At the venue | The shop records | The marketplace responds |
+|---|---|---|
+| The customer arrives and is honoured | voucher redeemed | The sale is final; the coins earned stay |
+| The customer arrives and can't be honoured | a failed visit | Full refund (card and coins), the code voided, goodwill coins |
+| The venue cancels the slot | cancelled by the merchant | The same refund and goodwill |
+| The customer never shows up | nothing | No refund; the voucher keeps its validity (expiry not built) |
+
+The goodwill is a policy to tune (`GOODWILL_COINS` in `venue/app.py`). The
+log of happenings and consequences is in its run directory.
+
 ## Real and simulated
 
 Real: the UCP protocol, signature checks, code pools and stock, voucher
@@ -244,8 +265,8 @@ the merchant; the agent's decisions until a model is connected.
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).
 - `console/`: the shops' console, `app.py` and `static/`.
-- `scripts/`: start and stop the shops, the agent and the console; the smoke
-  test.
+- `venue/`: the venue simulator, `app.py` and `static/`.
+- `scripts/`: start and stop the shops and the agent; the smoke test.
 - `deploy/`: Dockerfiles are in each app; here the Compose file, Caddyfile,
   `.env.example`, the front page and the steps.
 - `tests-e2e/`: browser tests, the only Node code in the repo.
