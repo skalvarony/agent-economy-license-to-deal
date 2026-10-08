@@ -152,6 +152,24 @@ def test_orders_are_summarised_for_the_table(client):
   assert all(s[3] == "s3cret" for s in client.seen if s[1] == "a.test")
 
 
+def test_a_fraud_check_flagged_for_review_reaches_the_table(client):
+  risk = {
+    "level": "elevated",
+    "score": 62,
+    "outcome": "authorized",
+    "reason": "elevated_risk_level",
+    "seller_message": "Payment complete.",
+    "review": True,
+  }
+  flagged = {**ORDER, "payment": {**ORDER["payment"], "risk": risk}}
+
+  summary = console.summarize(flagged, {"id": "a", "name": "A", "color": "red"})
+
+  assert summary["payment"]["risk"] == risk
+  # An order without a fraud check (the mock rail) simply has none.
+  assert client.get("/api/a/orders").json()[0]["payment"]["risk"] is None
+
+
 def test_an_order_comes_with_its_events_and_the_agent_side(client):
   detail = client.get("/api/a/orders/o1").json()
   assert [e["event"] for e in detail["events"]] == [

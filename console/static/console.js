@@ -146,6 +146,7 @@
     if (order.payment.status === "refunded") parts.push(pill("Refunded", "bad"));
     else if (order.payment.status === "captured") parts.push(pill("Paid", "good"));
     else parts.push(pill(order.payment.status ?? "?", "plain"));
+    if (order.payment.risk?.review) parts.push(" ", pill("Fraud check: review", "warn"));
     for (const item of order.items) {
       const redemption = { unredeemed: ["ready", "plain"], redeemed: ["used", "good"], cancelled_by_merchant: ["cancelled", "bad"], redemption_failed: ["not honoured", "bad"] }[item.redemption];
       if (item.voucher === "refunded") parts.push(" ", pill("void", "bad"));
@@ -385,6 +386,15 @@
     if (p.card) {
       const brand = (p.card.brand ?? "card").replace(/^\w/, (c) => c.toUpperCase());
       box.append(el("p", { class: "line", text: `${brand} •••• ${p.card.last4}${p.card.exp_month ? ` · exp ${String(p.card.exp_month).padStart(2, "0")}/${String(p.card.exp_year).slice(-2)}` : ""}` }));
+    }
+    // Stripe's fraud check (Radar): what it said, and whether to look.
+    const risk = p.risk ?? s.risk;
+    if (risk) {
+      const review = s.risk?.review;
+      box.append(el("p", { class: "line" },
+        pill(review ? "Fraud check: review" : `Fraud check: ${words(risk.level).toLowerCase()}`, review ? "warn" : risk.level === "normal" ? "good" : "plain"),
+        el("small", { text: [risk.score != null ? `score ${risk.score}` : null, risk.outcome && words(risk.outcome).toLowerCase(), risk.reason && words(risk.reason).toLowerCase()].filter(Boolean).join(" · ") }),
+        risk.seller_message ? el("small", { class: "muted", text: ` ${risk.seller_message}` }) : null));
     }
     if (p.mode !== "simulated") {
       const steps = [];

@@ -275,6 +275,9 @@ def summarize(
       "coins_earned": payment.get("coins_earned", 0),
       "status": payment.get("status"),
       "rail": payment.get("rail"),
+      # Stripe's fraud check, when the rail has one: `review` marks an
+      # order the merchant should look at.
+      "risk": payment.get("risk"),
     },
     "items": [
       {

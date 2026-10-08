@@ -58,6 +58,8 @@ class FakeShop:
     self.products = products
     self.balance = balance
     self.fee = 0
+    self.refusal = None  # a ShopError to answer `complete` with
+    self.risk = None  # the fraud check the shop keeps on its orders
     self.checkouts = {}
     self.completed = []
     self.told = []  # the agent_context of each completed checkout
@@ -121,6 +123,8 @@ class FakeShop:
 
   async def complete(self, checkout_id, card, context=None):
     assert card["handler"] and card["token"], "the card is handler + token"
+    if self.refusal:
+      raise self.refusal
     now = self._checkout(checkout_id)["totals"][-1]["amount"]
     if now != self.checkouts[checkout_id]["seen"]:
       raise ShopError(409, "requires_consent", "The total changed.")
@@ -148,7 +152,12 @@ class FakeShop:
           "redemption": {"status": "unredeemed"},
         }
       ],
-      "payment": {"amount": charged, "coins": stored["coins"], "rail": "mock"},
+      "payment": {
+        "amount": charged,
+        "coins": stored["coins"],
+        "rail": "mock",
+        **({"risk": self.risk} if self.risk else {}),
+      },
     }
 
 
@@ -280,6 +289,39 @@ def test_evidence_puts_the_record_and_the_order_side_by_side(session, shops):
   assert any("verified the agent's signature" in t for t in texts)
   assert any("names this agent's profile" in t for t in texts)
   assert not [f for f in evidence["findings"] if f["ok"] is False]
+
+
+def test_a_three_d_secure_refusal_reaches_the_person_in_plain_words(
+  session, shops
+):
+  run(session.say(REQUEST))
+  proposal = proposal_of(session)
+  shops[0].refusal = ShopError(
+    402,
+    "SHOPPER_ACTION_REQUIRED",
+    "The card's bank asks the person to confirm this payment (3-D Secure)."
+    " An agent cannot do this step for the person.",
+  )
+  events = run(session.approve(proposal["id"]))
+  assert not shops[0].completed
+  assert proposal["status"] == "failed"
+  text = events[-1]["text"]
+  assert "(3-D Secure)" in text
+  assert "An agent cannot do this step for the person." in text
+  assert text.endswith("Nothing was paid.")
+
+
+def test_evidence_tells_what_the_fraud_check_said(session, shops):
+  run(session.say(REQUEST))
+  proposal = proposal_of(session)
+  shops[0].risk = {"level": "elevated", "review": True, "score": None}
+  run(session.approve(proposal["id"]))
+
+  evidence = asyncio.run(session.evidence(f"order_{proposal['checkout_id']}"))
+
+  texts = [f["text"] for f in evidence["findings"]]
+  assert any("fraud check flagged this payment" in t for t in texts)
+  assert evidence["order"]["payment"]["risk"]["level"] == "elevated"
 
 
 def test_the_conversation_behind_an_order_is_kept(session, shops):
