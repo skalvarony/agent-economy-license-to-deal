@@ -33,7 +33,7 @@ start() {
     (cd "$SERVER" && uv run --no-sync import_csv.py "${db[@]}" \
       --data_dir="$ROOT/shops/$name" >"$dir/import.log" 2>&1)
     sig=()
-    [[ "${REQUIRE_SIGNATURES:-0}" == 1 ]] && sig=(--require_signatures --allow_insecure_profile_urls)
+    [[ "${REQUIRE_SIGNATURES:-0}" == 1 ]] && sig=(--require_signatures --require_signature_nonce --allow_insecure_profile_urls)
     (cd "$SERVER" && nohup uv run --no-sync server.py "${db[@]}" --port="$port" \
       --shop_dir="$ROOT/shops/$name" --ledger_path="$LEDGER" \
       --simulation_secret="${SIMULATION_SECRET:-demo-secret}" \

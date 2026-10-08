@@ -28,6 +28,7 @@ at runtime.
 import http.server
 import json
 import threading
+import time
 import uuid
 
 from absl.testing import absltest
@@ -84,6 +85,7 @@ class _SigTestBase(IntegrationTest):
     """Start a localhost profile server and configure signature flags."""
     super().setUp()
     ucp_signing.clear_key_cache()
+    ucp_signing.clear_nonce_cache()
     config.FLAGS.require_signatures = self.require_signatures
     config.FLAGS.allow_insecure_profile_urls = True
 
@@ -117,6 +119,7 @@ class _SigTestBase(IntegrationTest):
     self.server.shutdown()
     self.server.server_close()
     config.FLAGS.require_signatures = False
+    config.FLAGS.require_signature_nonce = False
     config.FLAGS.allow_insecure_profile_urls = False
     super().tearDown()
 
@@ -139,6 +142,7 @@ class _SigTestBase(IntegrationTest):
     kid: str | None = None,
     profile: str | None = None,
     extra_sign_headers: dict | None = None,
+    **sign_kwargs,
   ) -> dict:
     """Build headers for a signed request against the in-process server."""
     key = key or self.agent_key
@@ -153,7 +157,13 @@ class _SigTestBase(IntegrationTest):
     if extra_sign_headers is not None:
       sign_headers = extra_sign_headers
     additions = ucp_signing.sign_request(
-      key, kid, method, f"http://testserver{path}", sign_headers, body
+      key,
+      kid,
+      method,
+      f"http://testserver{path}",
+      sign_headers,
+      body,
+      **sign_kwargs,
     )
     headers.update(additions)
     return headers
@@ -463,6 +473,123 @@ class EnforcedModeTest(_SigTestBase):
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
       )
     self._assert_error(response, 401, "signature_missing")
+
+
+class FreshnessAndReplayTest(_SigTestBase):
+  """Enforcement on: stale, early, long-lived and copied requests get 401."""
+
+  require_signatures = True
+
+  def _post(self, checkout_id: str, **sign_kwargs):
+    """Sign (with the given created/expires/nonce) and POST a checkout."""
+    body = self._checkout_body(checkout_id)
+    headers = self._signed_headers(
+      "POST", "/checkout-sessions", body, **sign_kwargs
+    )
+    return (
+      self.client.post("/checkout-sessions", headers=headers, content=body),
+      body,
+      headers,
+    )
+
+  def _assert_error(self, response, code: str) -> None:
+    """Assert a 401 with the given UCP error code."""
+    self.assertEqual(response.status_code, 401, response.text)
+    self.assertEqual(response.json()["detail"]["errors"][0]["code"], code)
+
+  def test_fresh_signature_with_nonce_passes(self) -> None:
+    """Created now, expires in five minutes, with a nonce: accepted."""
+    now = int(time.time())
+    with self.client:
+      response, _, _ = self._post(
+        "fresh_1", created=now, expires=now + 300, nonce="fresh-nonce-1"
+      )
+    self.assertEqual(response.status_code, 201, response.text)
+
+  def test_expired_signature_refused(self) -> None:
+    """A signature past its expires is 401 signature_expired."""
+    now = int(time.time())
+    with self.client:
+      response, _, _ = self._post(
+        "expired_1", created=now - 600, expires=now - 300, nonce="n-exp"
+      )
+    self._assert_error(response, "signature_expired")
+
+  def test_created_in_the_future_refused(self) -> None:
+    """A created more than 60 seconds ahead is 401 signature_expired."""
+    now = int(time.time())
+    with self.client:
+      response, _, _ = self._post(
+        "future_1", created=now + 120, expires=now + 420, nonce="n-fut"
+      )
+    self._assert_error(response, "signature_expired")
+
+  def test_window_over_480_seconds_refused(self) -> None:
+    """A window (expires minus created) above 480 is 401 signature_expired."""
+    now = int(time.time())
+    with self.client:
+      response, _, _ = self._post(
+        "long_1", created=now, expires=now + 481, nonce="n-long"
+      )
+    self._assert_error(response, "signature_expired")
+
+  def test_old_signature_without_expires_refused(self) -> None:
+    """With no expires, a created older than the max age is refused."""
+    with self.client:
+      response, _, _ = self._post(
+        "noexp_1", created=int(time.time()) - 400, nonce="n-noexp"
+      )
+    self._assert_error(response, "signature_expired")
+
+  def test_same_nonce_twice_is_replayed(self) -> None:
+    """The identical request sent twice: the second is signature_replayed."""
+    now = int(time.time())
+    with self.client:
+      response, body, headers = self._post(
+        "replay_a", created=now, expires=now + 300, nonce="copied"
+      )
+      self.assertEqual(response.status_code, 201, response.text)
+      again = self.client.post(
+        "/checkout-sessions", headers=headers, content=body
+      )
+    self._assert_error(again, "signature_replayed")
+
+  def test_new_nonce_passes(self) -> None:
+    """Two different requests with different nonces are both accepted."""
+    now = int(time.time())
+    with self.client:
+      first, _, _ = self._post(
+        "nn_1", created=now, expires=now + 300, nonce="nonce-one"
+      )
+      second, _, _ = self._post(
+        "nn_2", created=now, expires=now + 300, nonce="nonce-two"
+      )
+    self.assertEqual(first.status_code, 201, first.text)
+    self.assertEqual(second.status_code, 201, second.text)
+
+  def test_missing_nonce_refused_when_flag_on(self) -> None:
+    """With --require_signature_nonce a nonce-less signature is refused."""
+    config.FLAGS.require_signature_nonce = True
+    with self.client:
+      response, _, _ = self._post("nononce_1")
+    self._assert_error(response, "signature_invalid")
+
+  def test_missing_nonce_accepted_when_flag_off(self) -> None:
+    """Without the flag a nonce-less (older) client still gets in."""
+    config.FLAGS.require_signature_nonce = False
+    with self.client:
+      response, _, _ = self._post("nononce_2")
+    self.assertEqual(response.status_code, 201, response.text)
+
+  def test_refusal_is_logged_with_the_reason(self) -> None:
+    """An enforced refusal leaves a warning with the code and message."""
+    now = int(time.time())
+    with (
+      self.client,
+      self.assertLogs(dependencies.logger, level="WARNING") as logs,
+    ):
+      self._post("log_1", created=now - 600, expires=now - 300, nonce="n-log")
+    self.assertTrue(any("signature_expired" in x for x in logs.output))
 
 
 def _resolver(body: bytes, headers: dict, port: int):
