@@ -1,6 +1,6 @@
 """The shops' console: one place to see and act on what the three shops sold.
 
-It is the merchant's side. Every call to a shop carries the merchant secret,
+It is the marketplace's side. Every call to a shop carries the merchant secret,
 and the agent is asked, when an order came through it, for the approval it
 recorded and the conversation that led to the purchase.
 
@@ -12,9 +12,7 @@ recorded and the conversation that led to the purchase.
                                           as the rail sees it, the agent side
                                           (opening it marks it seen)
   POST /api/{shop}/orders/{id}/review     {"state": "handled" | "open"}
-  POST /api/{shop}/orders/{id}/cancel     the merchant cancels the service
-  POST /api/{shop}/orders/{id}/redeem     {"honoured": true|false}
-  POST /api/{shop}/orders/{id}/refund     {"reason": "..."}
+  POST /api/{shop}/orders/{id}/cancel     cancel the purchase and refund it
   GET  /api/{shop}/events                 the shop's ledger
   GET  /api/{shop}/inventory              each option's codes by status
   GET  /api/{shop}/wallets/{email}        a wallet and its movements
@@ -516,35 +514,22 @@ async def review(
 
 @app.post("/api/{shop}/orders/{order_id}/cancel")
 async def cancel(shop: str, order_id: str) -> dict[str, Any]:
-  """Record that the merchant cancelled the service."""
-  done = await shops().call(shop, "POST", f"/orders/{order_id}/cancel")
-  shops().reviews.set(shop, order_id, "handled")
-  return done
+  """Cancel the purchase and refund it, in one go.
 
-
-@app.post("/api/{shop}/orders/{order_id}/redeem")
-async def redeem(
-  shop: str,
-  order_id: str,
-  honoured: Annotated[bool, Body(embed=True)] = True,
-) -> dict[str, Any]:
-  """Record a redemption at the venue, honoured or not."""
-  done = await shops().call(
-    shop, "POST", f"/orders/{order_id}/redeem", {"honoured": honoured}
+  The marketplace's only action on an order: the service is cancelled, the
+  card payment goes back through the rail (Stripe, when that is the rail),
+  the coins go back to the wallet, the voucher is voided and its slot is
+  released.
+  """
+  client = shops()
+  await client.call(shop, "POST", f"/orders/{order_id}/cancel")
+  done = await client.call(
+    shop,
+    "POST",
+    f"/orders/{order_id}/refund",
+    {"reason": "cancelled by the marketplace"},
   )
-  shops().reviews.set(shop, order_id, "handled")
-  return done
-
-
-@app.post("/api/{shop}/orders/{order_id}/refund")
-async def refund(
-  shop: str, order_id: str, reason: Annotated[str, Body(embed=True)] = ""
-) -> dict[str, Any]:
-  """Refund the order and void its vouchers."""
-  done = await shops().call(
-    shop, "POST", f"/orders/{order_id}/refund", {"reason": reason}
-  )
-  shops().reviews.set(shop, order_id, "handled")
+  client.reviews.set(shop, order_id, "handled")
   return done
 
 

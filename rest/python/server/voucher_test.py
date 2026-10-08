@@ -23,6 +23,7 @@ from server.server import app
 from services import booking_service
 from services import payment_rail
 from services import visitor
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -1691,7 +1692,7 @@ class WebCheckoutTest(ShopTestCase):
     order_id = order_path.rsplit("/", 1)[-1]
 
     self.client.post(f"/orders/{order_id}/cancel", headers=SECRET)
-    self.assertIn("Cancelled by the merchant", self.client.get(order_path).text)
+    self.assertIn("Cancelled by the marketplace", self.client.get(order_path).text)
 
     self.client.post(f"/orders/{order_id}/refund", headers=SECRET)
     page = self.client.get(order_path).text
@@ -2056,6 +2057,96 @@ class BookingTest(ShopTestCase):
     self.assertIn("Booked for", voucher)
     self.assertEqual(self._slot(1)["left"], 1)
     self.assertEqual(self._slot(0)["left"], 2)
+
+
+class ShopperCancelTest(ShopTestCase):
+  """The customer cancels an order for a refund from its page, in time."""
+
+  def setUp(self) -> None:
+    """Sign in and buy the spa day as this account."""
+    super().setUp()
+    self._signup()
+
+  def _set_deal(self, **fields) -> None:
+    async def change() -> None:
+      async with self.products_session_factory() as session:
+        await session.execute(
+          update(db.Deal).where(db.Deal.id == "spa").values(**fields)
+        )
+        await session.commit()
+
+    asyncio.run(change())
+
+  def _buy_as_ada(self) -> str:
+    created = self.client.post(
+      "/checkout-sessions",
+      headers=self._headers(),
+      json={
+        "line_items": [{"item": {"id": "spa-60"}, "quantity": 1}],
+        "buyer": {"email": "ada@example.com", "full_name": "Ada Buyer"},
+        "coins": {"use": 0},
+      },
+    )
+    self.assertEqual(created.status_code, 201, created.text)
+    done = self._complete(created.json()["id"])
+    self.assertEqual(done.status_code, 200, done.text)
+    return done.json()["order"]["id"]
+
+  def test_a_refundable_order_is_cancelled_and_refunded(self) -> None:
+    """The page offers it; the money goes back; the voucher is void."""
+    self._set_deal(refundable_until="2030-01-01T10:00:00+01:00")
+    order_id = self._buy_as_ada()
+    page = self.client.get(f"/vouchers/{order_id}").text
+    self.assertIn("Cancel and get a refund", page)
+    cancelled = self.client.post(
+      f"/vouchers/{order_id}/cancel", follow_redirects=False
+    )
+    self.assertEqual(cancelled.status_code, 303, cancelled.text)
+    self.assertIn("notice=refunded", cancelled.headers["location"])
+    order = self._order(order_id)
+    line = order["line_items"][0]
+    self.assertEqual(order["payment"]["status"], "refunded")
+    self.assertEqual(line["voucher"]["status"], "refunded")
+    self.assertEqual(line["redemption"]["status"], "cancelled_by_shopper")
+    events = self._events()
+    self.assertIn("SHOPPER_CANCELLED", events)
+    self.assertIn("REFUND_AUTHORISED", events)
+    page = self.client.get(f"/vouchers/{order_id}").text
+    self.assertNotIn("Cancel and get a refund", page)
+    self.assertIn("Refunded", page)
+    self.assertIn("Cancelled by you", page)
+    # Once is enough.
+    again = self.client.post(f"/vouchers/{order_id}/cancel", follow_redirects=False)
+    self.assertIn("notice=norefund", again.headers["location"])
+
+  def test_a_non_refundable_or_expired_order_is_refused(self) -> None:
+    """No button, and the route says no, when the terms don't allow it."""
+    self._set_deal(refundability="non_refundable", refundable_until=None)
+    final = self._buy_as_ada()
+    page = self.client.get(f"/vouchers/{final}").text
+    self.assertNotIn("Cancel and get a refund", page)
+    self.assertIn("This deal is not refundable.", page)
+    refused = self.client.post(f"/vouchers/{final}/cancel", follow_redirects=False)
+    self.assertIn("notice=norefund", refused.headers["location"])
+    self.assertEqual(self._order(final)["payment"]["status"], "captured")
+    self._set_deal(
+      refundability="refundable", refundable_until="2020-01-01T10:00:00+01:00"
+    )
+    late = self._buy_as_ada()
+    page = self.client.get(f"/vouchers/{late}").text
+    self.assertIn("The refund period ended on 2020-01-01.", page)
+    refused = self.client.post(f"/vouchers/{late}/cancel", follow_redirects=False)
+    self.assertIn("notice=norefund", refused.headers["location"])
+
+  def test_someone_else_s_order_cannot_be_cancelled(self) -> None:
+    """Another account's order looks like one that doesn't exist."""
+    self._set_deal(refundable_until="2030-01-01T10:00:00+01:00")
+    order_id = self._buy_as_ada()
+    self.client.post("/logout")
+    self._signup("bob@example.com", "Bob Buyer")
+    refused = self.client.post(f"/vouchers/{order_id}/cancel", follow_redirects=False)
+    self.assertEqual(refused.status_code, 404, refused.text)
+    self.assertEqual(self._order(order_id)["payment"]["status"], "captured")
 
 
 if __name__ == "__main__":

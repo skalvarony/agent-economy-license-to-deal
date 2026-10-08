@@ -116,7 +116,7 @@
         ["Web", `${s.doors.web ?? 0} · ${percent(s.doors.web ?? 0, s.orders)}`],
         ...Object.entries(s.signatures).map(([k, n]) => [`Signature ${k}`, n]),
       ]));
-      $("#redemption").replaceChildren(...factList(Object.entries(s.redemption).map(([k, n]) => [({ unredeemed: "Ready to use", redeemed: "Used at the venue", cancelled_by_merchant: "Cancelled by the merchant", redemption_failed: "Not honoured", refunded: "Refunded, void" })[k] ?? words(k), n])));
+      $("#redemption").replaceChildren(...factList(Object.entries(s.redemption).map(([k, n]) => [({ unredeemed: "Ready to use", redeemed: "Used", cancelled_by_shopper: "Cancelled by the customer", cancelled_by_merchant: "Cancelled by the marketplace", redemption_failed: "Not honoured", refunded: "Refunded, void" })[k] ?? words(k), n])));
       $("#payments").replaceChildren(...factList([
         ...Object.entries(s.rails).map(([k, n]) => [`Rail ${k}`, `${n} orders`]),
         ["Declined", s.declines],
@@ -147,7 +147,7 @@
     else if (order.payment.status === "captured") parts.push(pill("Paid", "good"));
     else parts.push(pill(order.payment.status ?? "?", "plain"));
     for (const item of order.items) {
-      const redemption = { unredeemed: ["ready", "plain"], redeemed: ["used", "good"], cancelled_by_merchant: ["cancelled", "bad"], redemption_failed: ["not honoured", "bad"] }[item.redemption];
+      const redemption = { unredeemed: ["ready", "plain"], redeemed: ["used", "good"], cancelled_by_shopper: ["cancelled by the customer", "bad"], cancelled_by_merchant: ["cancelled", "bad"], redemption_failed: ["not honoured", "bad"] }[item.redemption];
       if (item.voucher === "refunded") parts.push(" ", pill("void", "bad"));
       else if (redemption) parts.push(" ", pill(redemption[0], redemption[1]));
     }
@@ -156,7 +156,7 @@
 
   function orderState(o) {
     if (o.payment.status === "refunded") return "refunded";
-    if (o.items.some((i) => i.redemption === "cancelled_by_merchant" || i.redemption === "redemption_failed")) return "cancelled";
+    if (o.items.some((i) => ["cancelled_by_merchant", "cancelled_by_shopper", "redemption_failed"].includes(i.redemption))) return "cancelled";
     if (o.items.some((i) => i.redemption === "redeemed")) return "used";
     return "ready";
   }
@@ -331,7 +331,7 @@
       const v = line.voucher ?? {};
       const r = line.redemption ?? {};
       const state = v.status === "refunded" ? pill("void", "bad")
-        : { unredeemed: pill("ready to use", "plain"), redeemed: pill("used", "good"), cancelled_by_merchant: pill("cancelled", "bad"), redemption_failed: pill("not honoured", "bad") }[r.status] ?? pill(words(r.status), "plain");
+        : { unredeemed: pill("ready to use", "plain"), redeemed: pill("used", "good"), cancelled_by_shopper: pill("cancelled by the customer", "bad"), cancelled_by_merchant: pill("cancelled", "bad"), redemption_failed: pill("not honoured", "bad") }[r.status] ?? pill(words(r.status), "plain");
       return el("div", { class: "voucher" },
         el("div", { class: "head" }, el("b", { text: line.item.title }), state),
         el("div", { class: "codes" }, (v.codes ?? []).map((c) => el("span", { class: "with-copy" }, el("code", { text: c }), copyButton(c)))),
@@ -402,7 +402,7 @@
     const s = order.summary;
     const refunded = s.payment.status === "refunded";
     const redeemed = s.items.some((i) => i.redemption === "redeemed");
-    const cancelled = s.items.some((i) => i.redemption === "cancelled_by_merchant");
+    const cancelled = s.items.some((i) => i.redemption === "cancelled_by_merchant" || i.redemption === "cancelled_by_shopper");
     const box = el("div", { class: "actions" });
     const confirmBox = el("div");
     const call = (path, options) => api(path, options, s.shop);
@@ -415,11 +415,9 @@
           el("button", { class: "secondary", type: "button", text: "No", onclick: () => confirmBox.replaceChildren() }))));
     };
     const back = `${money(s.payment.amount)} goes back to the card${s.payment.coins ? ` and ${s.payment.coins} coins to the wallet` : ""}${s.payment.coins_earned ? `; the ${s.payment.coins_earned} coins earned are taken back` : ""}.`;
+    // The marketplace's one action: cancel the purchase and refund it.
     box.append(
-      el("button", { class: "secondary", type: "button", text: "Mark redeemed", disabled: refunded || redeemed || cancelled, onclick: () => ask("Redeem", "Record that the customer used the voucher at the venue?", () => call(`/orders/${s.id}/redeem`, { method: "POST", body: { honoured: true } })) }),
-      el("button", { class: "secondary", type: "button", text: "Not honoured at the venue", disabled: refunded || redeemed || cancelled, onclick: () => ask("Record a failed visit", "Record that the venue turned the customer away? A refund usually follows.", () => call(`/orders/${s.id}/redeem`, { method: "POST", body: { honoured: false } })) }),
-      el("button", { class: "danger", type: "button", text: "Cancel the service", disabled: refunded || redeemed || cancelled, onclick: () => ask("Cancel", "Cancel the service on the merchant's side? The voucher can no longer be used.", () => call(`/orders/${s.id}/cancel`, { method: "POST" })) }),
-      el("button", { class: "danger", type: "button", text: "Refund", disabled: refunded, onclick: () => ask("Refund", `Refund in full? ${back} The codes are voided.`, (reason) => call(`/orders/${s.id}/refund`, { method: "POST", body: { reason } }), true) }));
+      el("button", { class: "danger", type: "button", text: "Cancel and refund", disabled: refunded || redeemed || cancelled, onclick: () => ask("Cancel and refund", `Cancel this purchase and refund it in full? ${back} The voucher is voided and its slot released.`, () => call(`/orders/${s.id}/cancel`, { method: "POST" })) }));
     return [box, confirmBox];
   }
 

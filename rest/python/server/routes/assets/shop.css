@@ -330,6 +330,12 @@ button:disabled { opacity: .6; cursor: progress; }
 .agent pre { margin: 0 0 12px; padding: 12px; white-space: pre-wrap; font: 0.8125rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); }
 .tech { margin: 14px 0 0; font-size: 0.75rem; color: var(--muted); }
 
+/* Cancelling an order for a refund, from its page. */
+.cancel { margin: 16px 0 0; }
+.cancel button.danger { width: 100%; padding: 10px 14px; border-radius: 999px; border: 1px solid #c8291d; background: #fff; color: #c8291d; font-weight: 600; }
+.cancel button.danger:hover { background: #c8291d; color: #fff; }
+.cancel .tech, .cancel-why { margin-top: 8px; }
+
 /* The date and time of a visit, chosen on the checkout page. */
 .slot { margin: 10px 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .slot .booked, .slot .unbooked { margin: 0 0 8px; font-size: 0.9375rem; }

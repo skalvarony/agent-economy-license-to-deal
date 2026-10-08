@@ -110,6 +110,8 @@ def fake_world(seen):
       return httpx.Response(200, json=LEDGER)
     if path == "/orders/o1/payment":
       return httpx.Response(200, json=PAYMENT_INFO)
+    if path == "/orders/o1/cancel":
+      return httpx.Response(200, json={"cancelled": True})
     if path == "/orders/o1/refund":
       return httpx.Response(
         200, json={"refunded": json.loads(request.content)["reason"]}
@@ -120,8 +122,13 @@ def fake_world(seen):
 
 
 @pytest.fixture
-def client(monkeypatch, tmp_path):
-  seen = []
+def seen():
+  """The paths the fakes were asked for, in order."""
+  return []
+
+
+@pytest.fixture
+def client(monkeypatch, tmp_path, seen):
   monkeypatch.setattr(console, "SECRET", "s3cret")
   settings = {
     "name": "Console",
@@ -210,7 +217,7 @@ def test_orders_move_from_new_to_seen_to_handled(client):
     == 422
   )
   # An action on the order handles it.
-  client.post("/api/a/orders/o1/refund", json={"reason": "r"})
+  client.post("/api/a/orders/o1/cancel")
   assert client.get("/api/a/orders").json()[0]["attention"] == "handled"
 
 
@@ -227,11 +234,17 @@ def test_all_shops_lists_every_shop_s_orders(client):
   assert client.get("/api/all/stats").json()["orders"] == 1
 
 
-def test_actions_reach_the_shop_and_refusals_come_back(client):
-  done = client.post(
-    "/api/a/orders/o1/refund", json={"reason": "merchant cancelled"}
-  )
-  assert done.json() == {"refunded": "merchant cancelled"}
+def test_actions_reach_the_shop_and_refusals_come_back(client, seen):
+  # The one action cancels the service at the shop, then refunds it.
+  done = client.post("/api/a/orders/o1/cancel")
+  assert done.json() == {"refunded": "cancelled by the marketplace"}
+  assert [call[2] for call in seen[-2:]] == [
+    "/orders/o1/cancel",
+    "/orders/o1/refund",
+  ]
+  # There is no other action: no bare refund, no redemption.
+  assert client.post("/api/a/orders/o1/refund", json={}).status_code == 404
+  assert client.post("/api/a/orders/o1/redeem", json={}).status_code == 404
   missing = client.get("/api/a/orders/missing")
   assert missing.status_code == 404
   assert missing.json()["detail"] == "Order not found"

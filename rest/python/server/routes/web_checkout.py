@@ -31,6 +31,7 @@ from exceptions import PaymentFailedError
 from exceptions import BookingRequiredError
 from exceptions import PurchaseLimitError
 from exceptions import SlotUnavailableError
+from exceptions import VoucherStateError
 from exceptions import ResourceNotFoundError
 from fastapi import APIRouter
 from fastapi import Depends
@@ -58,6 +59,7 @@ from services import ledger
 from services import payment_rail
 from services import voucher_service
 from services.checkout_service import CheckoutService
+from services.voucher_service import VoucherService
 from ucp_sdk.models.schemas.shopping.payment_create_request import (
   PaymentCreateRequest,
 )
@@ -87,6 +89,10 @@ NOTICES = {
   "booking": "Choose a date and time for your visit before you pay.",
   "slot": "That time isn't available any more. Pick another.",
   "booked": "Your date and time are set. Review and pay when ready.",
+  "refunded": (
+    "Order cancelled. The card payment and any coins are on their way back."
+  ),
+  "norefund": "This order can't be cancelled for a refund any more.",
   "promo": "That promo code isn't valid.",
   "paid": "Payment received. Your voucher is ready.",
 }
@@ -959,7 +965,8 @@ def _voucher_state(line: dict[str, Any]) -> tuple[str, str]:
     return "Refunded", "final"
   return {
     "redeemed": ("Used", "used"),
-    "cancelled_by_merchant": ("Cancelled by the merchant", "final"),
+    "cancelled_by_shopper": ("Cancelled by you", "final"),
+    "cancelled_by_merchant": ("Cancelled by the marketplace", "final"),
     "redemption_failed": ("Couldn't be used at the venue", "final"),
   }.get(line["redemption"]["status"], ("Ready to use", "free"))
 
@@ -1035,6 +1042,19 @@ async def voucher_page(
       </li>"""
 
   payment = order.get("payment") or {}
+  # Cancelling for a refund is the customer's own, while the terms allow it.
+  allowed, why = voucher_service.refundable_now(order)
+  if allowed:
+    cancel = f"""
+        <form class="cancel" method="post"
+              action="/vouchers/{esc(order_id)}/cancel"
+              onsubmit="return confirm('Cancel this order and get a refund?')">
+          <button class="danger" type="submit">Cancel and get a refund</button>
+          <p class="tech">The card payment and any coins go back the way
+            they came; the voucher and its slot are released.</p>
+        </form>"""
+  else:
+    cancel = f'<p class="tech cancel-why">{esc(why)}</p>'
   coin_rows = ""
   if payment.get("coins"):
     coin_rows += f"<dt>With coins</dt><dd>{payment['coins']} coins</dd>"
@@ -1061,6 +1081,7 @@ async def voucher_page(
           <code>{esc(payment.get("rail", ""))}</code>). Reference
           <code>{esc(payment.get("payment_id", ""))}</code>. Order
           <code>{esc(order_id)}</code>.</p>
+        {cancel}
         <a class="back" href="/">Keep browsing</a>
       </aside>
     </div>
@@ -1069,6 +1090,30 @@ async def voucher_page(
       {provenance.timeline(order, order_id)}
     </div>"""
   return HTMLResponse(storefront.page("Your order", body, request, shopper))
+
+
+@router.post("/vouchers/{id}/cancel", include_in_schema=False)
+async def cancel_order(
+  request: Request,
+  shopper: storefront.ShopperSession,
+  transactions_session: storefront.TransactionsDb,
+  order_id: Annotated[str, Path(..., alias="id")],
+) -> Response:
+  """Cancel an order at the customer's request and refund it."""
+  here = f"/vouchers/{order_id}"
+  if not shopper.user:
+    return storefront.login_redirect(here)
+  owner = await db.get_order_owner(transactions_session, order_id)
+  if owner != shopper.user.id:
+    return storefront.not_found(request, shopper, "order")
+  vouchers = VoucherService(transactions_session, payment_rail.get_rail())
+  try:
+    await vouchers.cancel_by_shopper(order_id)
+  except VoucherStateError:
+    return _redirect(f"{here}?notice=norefund")
+  except ResourceNotFoundError:
+    return storefront.not_found(request, shopper, "order")
+  return _redirect(f"{here}?notice=refunded")
 
 
 # The states the vouchers list can be narrowed to, and which rows each takes.

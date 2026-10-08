@@ -26,7 +26,6 @@ answer.
 | Shop B · **Praha Pass** (food & things to do, 5 % back) | https://b.licensetodeal.app | shop account |
 | Shop C · **Dawn Saver** (final-sale wellness, no coins) | https://c.licensetodeal.app | shop account |
 | Shops console (marketplace side: orders, payments, refunds, inbox) | https://admin.licensetodeal.app | team user |
-| Venue simulator (merchant side: arrivals, redeem, turn away, cancel) | https://venue.licensetodeal.app | team user |
 | Álvaro's agent | https://ltd-agent-alvaro.duckdns.org | team user |
 | David's agent | https://ltd-agent-david.duckdns.org | team user |
 | Emmanouil's agent | https://ltd-agent-emmanouil.duckdns.org | team user |
@@ -47,7 +46,7 @@ agent they are three shops of three owners.
 
 ## Who signs in where
 
-**Team user.** Console, venue and the three agent pages share one login:
+**Team user.** The console and the three agent pages share one login:
 user `team`, one password. Álvaro gives it to you in person or by a safe
 channel; it is not written anywhere (only its bcrypt hash is on the server).
 Personal per-agent logins (`alvaro`, `david`, `emmanouil`) exist as an option
@@ -98,7 +97,7 @@ then update the connector in ChatGPT/Claude.
                                       │ checkout → exact total · complete → charge · vouchers · refunds
                                       ▼
                                    Stripe (test mode): PaymentIntent, manual capture, refunds
- admin console ◄── merchant secret ──┘      venue simulator ◄── merchant secret
+ admin console ◄── merchant secret ──┘
 ```
 
 | Service | Code | Port in the VM | Data |
@@ -106,13 +105,12 @@ then update the connector in ChatGPT/Claude.
 | `shop-a/b/c` | `rest/python/server` (UCP sample + our services) + `shops/<a|b|c>/` catalogue | 8080 | SQLite per shop + one shared ledger volume |
 | `agent-alvaro/david/emmanouil` | `agent/` (FastAPI, scripted or OpenAI brain, MCP server, Telegram) | 8190 | volume: `journal.jsonl`, `approvals.jsonl`, `proposals.json`, `memory.json`, keys |
 | `console` | `console/` | 8195 | volume: review marks |
-| `venue` | `venue/` | 8196 | — |
 | `caddy` | `deploy/Caddyfile` | 80/443 | certificates |
 | landing | `deploy/landing/` (static) | via Caddy | — |
 
 Stack: Python 3.12 + FastAPI + `uv`, vanilla JS/CSS front ends, Playwright
-for browser tests, Docker Compose. Tests: 340 (shops) + 38 (agent) + 9 + 5 +
-7 (console, venue, login).
+for browser tests, Docker Compose. Tests: 350 (shops) + 46 (agent) + 9 +
+7 (console, login).
 
 ## What the system does
 
@@ -145,15 +143,13 @@ for browser tests, Docker Compose. Tests: 340 (shops) + 38 (agent) + 9 + 5 +
 - Storefront for people: browse, cart, Stripe Elements checkout, account page
   (coins, orders, who buys for you), My vouchers (newest first, filters, who
   bought it and through which app, the shop's own ledger of the order).
-- Refunds to card and wallet; codes voided; everything in an append-only
-  ledger.
+- Refunds to card and wallet, asked for by the customer from the order page
+  while the terms allow it, or by the marketplace from the console; codes
+  voided; everything in an append-only ledger.
 
 **Console** (marketplace): all orders across shops, agent vs human, Stripe
-details per order, refund/cancel/redeem in one click, inbox marks (new, seen,
+details per order, cancel and refund in one click, inbox marks (new, seen,
 handled), KPIs, CSV export.
-
-**Venue** (merchant): arrivals per venue, redeem / turn away / cancel; the
-shop and the agent see it at once.
 
 ## How a purchase is paid (the part to understand well)
 
@@ -181,7 +177,7 @@ it has the agent's word. That gap is the "signed approval" item below.
 | 1 | Normal purchase, any channel | Works end to end, signature verified |
 | 2 | Surprise fee: shop changes the total | Shop refuses (409); agent pays nothing, asks again |
 | 3 | Fake bot | 401 unsigned / wrong key, 400 private profile, 403 on the web |
-| 4 | Merchant cancels / turns away | From the venue page → refund (card + coins), code voided |
+| 4 | The marketplace cancels | From the console: cancel and refund (card + coins), code voided, slot released |
 | 5 | "I never bought this" | `/evidence/{order}`: approval vs charge, signature, agent, buyer |
 
 ## Operating it
@@ -206,13 +202,13 @@ your screen and nowhere else.
 
 Locally (needs `uv`, Node 22+): `scripts/shops.sh start`, `scripts/agent.sh
 start` (http://localhost:8190, no login), `scripts/console.sh start`,
-`scripts/venue.sh start`; `python3 scripts/smoke.py` runs 24 live checks.
+`python3 scripts/smoke.py` runs 26 live checks.
 Every local start re-seeds.
 
 ## Repo map
 
 `rest/python/server` shops · `shops/` catalogues · `agent/` the agent ·
-`console/` · `venue/` · `shared/teamlogin.py` sign-in · `deploy/` Compose,
+`console/` · `shared/teamlogin.py` sign-in · `deploy/` Compose,
 Caddy, scripts, landing · `scripts/` local run · `tests-e2e/` browser tests ·
 `docs/poster/` one-page overview (PNG) · `PLAN.md` decisions and status ·
 `README.md` the long version.

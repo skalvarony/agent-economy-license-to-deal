@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 current() { grep -E "^$1=" .env | cut -d= -f2- || true; }
 
 read -rp "Email for certificate notices [$(current ACME_EMAIL)]: " ACME
-echo "Team sign-in (console, venue, and the agents without a personal login):"
+echo "Team sign-in (the console, and the agents without a personal login):"
 read -rp "  User [$(current AGENT_USER)]: " USER_NAME
 read -rsp "  Password: " AGENT_PASSWORD; echo
 echo "Personal sign-in for each agent (empty keeps the current one or the team's):"

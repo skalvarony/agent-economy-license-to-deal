@@ -13,7 +13,6 @@ left and why.
 | C, Dawn Saver | :8183 | https://c.licensetodeal.app | Wellness, cheaper, non-refundable, no coins |
 | The agents | :8190 | `ltd-agent-alvaro`, `ltd-agent-david`, `ltd-agent-emmanouil` `.duckdns.org` | One per person, on its own name, behind a password |
 | The console | :8195 | https://admin.licensetodeal.app | The shops' side, same password |
-| The venue | :8196 | https://venue.licensetodeal.app | The merchants' world, same password |
 
 ## Run
 
@@ -23,14 +22,12 @@ Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
 scripts/agent.sh start       # http://localhost:8190
 scripts/console.sh start     # http://localhost:8195
-scripts/venue.sh start       # http://localhost:8196
 python3 scripts/smoke.py     # 26 live checks: buys, books, cancels, refunds, booking fee
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
-Tests: `cd rest/python/server && uv run pytest` (347), `cd agent && uv run
-pytest` (46), `cd console && uv run pytest` (16), `cd venue && uv run pytest`
-(5). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
+Tests: `cd rest/python/server && uv run pytest` (350), `cd agent && uv run
+pytest` (46), `cd console && uv run pytest` (16). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
 running): `npm install && npx playwright install chromium` once, then
 `npm test` (five shop flows) and `npm run test:agent` (three agent flows).
 They use exact checks and need no model.
@@ -103,6 +100,10 @@ tell what they bought themselves from what their agent bought, and how.
 
 **For people (browser, cookies):** `/` and `/deals/{id}` to browse, `/cart`,
 `/login`, `/account`, `/checkout/{id}` (needs an account), and `/vouchers`.
+From an order's page the customer can cancel it for a refund while the deal
+is refundable and its refund deadline has not passed (`POST
+/vouchers/{id}/cancel`): the card payment and the coins go back the way they
+came, the voucher is voided and its slot released.
 There is no public registration: the shop creates accounts (`POST /accounts`
 with the merchant secret; `shops/<shop>/users.csv` seeds them, and on the
 server `deploy/add-account.sh` adds one). An order belongs to the account
@@ -119,7 +120,7 @@ keeps hints about its sender (headless browser, HTTP client, payment sent
 without the page's script, paid within two seconds). Hints are not proof; they
 are for whoever decides a complaint (`services/visitor.py`).
 
-**For the merchant** (`Simulation-Secret` header): `POST /orders/{id}/cancel`,
+**For the marketplace** (`Simulation-Secret` header, the console's calls): `POST /orders/{id}/cancel`,
 `/redeem`, `/refund`; `POST /testing/booking-fee` adds a fee to every
 checkout; `POST /wallets/grant`, `GET /wallets/{email}`; `GET /inventory`,
 `GET /inventory/{option}/codes`, `POST` to add codes; `GET /deals`;
@@ -221,37 +222,20 @@ life.
 
 ## The console
 
-One page for the merchant's side of the three shops, with a shop selector
+One page for the marketplace's side of the three shops, with a shop selector
 (`console/`). Orders: every purchase with who paid, what, how much on the
 card and in coins, which door (agent with the signature's outcome, or web
 with its hints) and the voucher's state. Opening one shows the facts, the
-merchant's actions (mark redeemed, not honoured, cancel, refund with a
-reason), the shop's events behind it, and, for an agent order, the agent's
-side: the approval findings and the whole conversation that led to the
+marketplace's one action, cancel and refund (the service is cancelled, the
+card payment goes back through the rail, the coins to the wallet, the
+voucher is voided and its slot released), the shop's events behind it, and,
+for an agent order, the agent's side: the approval findings and the whole conversation that led to the
 purchase. Other sections: the shop's events, the code inventory, customers
 (wallet lookup, grant coins, open an account, set a password) and the demo
 controls (the surprise fee). It calls the shops with the merchant secret and
 the agents for their records (each order names the agent that placed it, by
 its profile URL; `AGENT_URLS` maps profiles to addresses); it stores nothing
 itself.
-
-## At the venue
-
-The shops are the intermediary; the service happens at a merchant's venue
-they don't control. `venue/` simulates that world for every shop, deal and
-purchase: pick a purchase and say what happened. Each happening is sent to
-the shop as the merchant would send it, and the marketplace's response
-follows, with its consequences shown and logged:
-
-| At the venue | The shop records | The marketplace responds |
-|---|---|---|
-| The customer arrives and is honoured | voucher redeemed | The sale is final; the coins earned stay |
-| The customer arrives and can't be honoured | a failed visit | Full refund (card and coins), the code voided, goodwill coins |
-| The venue cancels the slot | cancelled by the merchant | The same refund and goodwill |
-| The customer never shows up | nothing | No refund; the voucher keeps its validity (expiry not built) |
-
-The goodwill is a policy to tune (`GOODWILL_COINS` in `venue/app.py`). The
-log of happenings and consequences is in its run directory.
 
 ## Real and simulated
 
@@ -260,7 +244,7 @@ states, and the payment when the shop runs on the `stripe` rail
 (`--payment_rail=stripe`, Stripe's API in the mode of the key: a test key
 authorises, captures and refunds without moving money). Simulated: the
 catalogue with its prices, ratings and reviews; the payment on the `mock`
-rail (every order and ledger line names its rail); redemption at the venue;
+rail (every order and ledger line names its rail);
 the merchant; the agent's decisions until a model is connected.
 
 ## Layout
@@ -280,7 +264,6 @@ the merchant; the agent's decisions until a model is connected.
   evidence), `brain.py` and `model_brain.py`, `shops.py` (UCP calls),
   `signing.py`, `static/`.
 - `console/`: the shops' console, `app.py` and `static/`.
-- `venue/`: the venue simulator, `app.py` and `static/`.
 - `scripts/`: start and stop the shops and the agent; the smoke test.
 - `deploy/`: Dockerfiles are in each app; here the Compose file, Caddyfile,
   `.env.example`, `set-secrets.sh` and the steps.

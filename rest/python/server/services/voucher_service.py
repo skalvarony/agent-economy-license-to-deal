@@ -224,6 +224,34 @@ async def issue_vouchers(
   return issued
 
 
+def refundable_now(
+  order: dict[str, Any], now: datetime.datetime | None = None
+) -> tuple[bool, str]:
+  """Whether the customer may still cancel an order for a refund, and why not.
+
+  Yes while every voucher is unused, the deal is refundable and its refund
+  deadline, if any, has not passed.
+  """
+  now = now or datetime.datetime.now(datetime.timezone.utc)
+  if (order.get("payment") or {}).get("status") != "captured":
+    return False, "Already refunded."
+  lines = [li for li in order.get("line_items") or [] if "voucher" in li]
+  if not lines:
+    return False, "Nothing to refund."
+  for line in lines:
+    if line["voucher"]["status"] != "issued":
+      return False, "The voucher is no longer live."
+    if line["redemption"]["status"] != "unredeemed":
+      return False, "The voucher has been used or cancelled."
+    cancellation = line.get("cancellation") or {}
+    if cancellation.get("refundability") != "refundable":
+      return False, "This deal is not refundable."
+    until = cancellation.get("refundable_until")
+    if until and datetime.datetime.fromisoformat(until) < now:
+      return False, f"The refund period ended on {until[:10]}."
+  return True, ""
+
+
 def _release_slot(line: dict[str, Any]) -> None:
   """Mark a line's booking as released, if it had one."""
   booking = (line.get("service") or {}).get("booking")
@@ -249,6 +277,24 @@ class VoucherService:
     await booking_service.release(self.transactions_session, order_id)
     await self._save(order, "MERCHANT_CANCELLED")
     return order
+
+  async def cancel_by_shopper(self, order_id: str) -> dict[str, Any]:
+    """Cancel at the customer's request and refund, while the terms allow it.
+
+    Only a refundable deal, before its refund deadline, and only while the
+    voucher is unused. The money goes back the way it came (the card
+    through the rail, the coins to the wallet) and the slot is released.
+    """
+    order, lines = await self._load(order_id)
+    allowed, why = refundable_now(order)
+    if not allowed:
+      raise VoucherStateError(f"Cannot cancel: {why}")
+    for line in lines:
+      line["redemption"]["status"] = "cancelled_by_shopper"
+      _release_slot(line)
+    await booking_service.release(self.transactions_session, order_id)
+    await self._save(order, "SHOPPER_CANCELLED")
+    return await self.refund(order_id, "cancelled by the customer")
 
   async def redeem(self, order_id: str, honoured: bool) -> dict[str, Any]:
     """Record a redemption attempt at the venue.

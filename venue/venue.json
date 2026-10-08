@@ -1,9 +1,0 @@
-{
-  "name": "License to Deal · at the venue",
-  "shops": [
-    {"id": "a", "name": "Dusk Deals", "url": "http://localhost:8181", "color": "#6d28d9"},
-    {"id": "b", "name": "Praha Pass", "url": "http://localhost:8182", "color": "#c2410c"},
-    {"id": "c", "name": "Dawn Saver", "url": "http://localhost:8183", "color": "#0f766e"}
-  ],
-  "agent_url": "http://localhost:8190"
-}

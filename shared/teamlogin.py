@@ -1,6 +1,6 @@
 """A sign-in page and a session cookie for the team's pages.
 
-The console, the venue simulator and each person's agent are for the team
+The console and each person's agent are for the team
 only. Instead of the browser's own password prompt, each app gets a sign-in
 page, a signed session cookie that lasts a week, and a sign-out button.
 
@@ -23,7 +23,7 @@ A request that carries the merchant secret (`Simulation-Secret`, the value
 of SIMULATION_SECRET) is let through as the team: that is how the console
 asks an agent for its evidence, server to server.
 
-This file is one and the same in console/, venue/ and agent/ (a link to
+This file is one and the same in console/ and agent/ (a link to
 shared/teamlogin.py); the images copy it in.
 """
 

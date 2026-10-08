@@ -11,7 +11,6 @@ https://b.<domain>      Praha Pass
 https://c.<domain>      Dawn Saver
 https://<agent host>    one agent per person, on its own name; sign-in page
 https://admin.<domain>  the shops' console; sign-in page, team account
-https://venue.<domain>  the venue simulator; sign-in page, team account
 ```
 
 ## 1. A machine
@@ -30,7 +29,7 @@ curl -fsSL https://get.docker.com | sh
 
 Two kinds: the shops' domain, and one name per agent, apart from it.
 
-The six hostnames must resolve to the VM's public IP. Without buying a
+The five hostnames must resolve to the VM's public IP. Without buying a
 domain, [DuckDNS](https://www.duckdns.org) gives a free one:
 
 1. Sign in, create a subdomain (say `licensetodeal`) and set its IP to the
@@ -39,8 +38,8 @@ domain, [DuckDNS](https://www.duckdns.org) gives a free one:
 2. `DOMAIN=licensetodeal.duckdns.org` in `.env`. With a bought domain as well,
    put the DuckDNS name in `ALT_DOMAIN`, and both keep answering.
 
-With a bought domain: `A` records for the root, `a`, `b`, `c`, `admin` and
-`venue`, to the VM's IP, and `DOMAIN=yourdomain.com`.
+With a bought domain: `A` records for the root, `a`, `b`, `c` and `admin`, to
+the VM's IP, and `DOMAIN=yourdomain.com`.
 
 Each agent gets its own name (free DuckDNS names do: `ltd-agent-alvaro`,
 `ltd-agent-david`, `ltd-agent-emmanouil`), pointed at the same IP and set
@@ -68,9 +67,9 @@ merchant secret if there is none):
 
 It hashes the passwords (bcrypt, with Caddy's tool) and writes every `$`
 as `$$`, as Compose needs. The sign-in is the apps' own (`shared/teamlogin.py`,
-copied into the console, the venue and the agent images): a page at `/login`,
-a session cookie for a week, `/logout`. The team account opens the console
-and the venue; each agent opens with its person's own login if one was given
+copied into the console and the agent images): a page at `/login`,
+a session cookie for a week, `/logout`. The team account opens the console;
+each agent opens with its person's own login if one was given
 (user: first name in lower case), else with the team's. An agent's
 `/profile.json` and `/mcp/<key>` stay open: shops fetch the one, the person's
 ChatGPT the other. To do it by hand: `openssl rand -hex 24` for the secret and
@@ -142,7 +141,7 @@ The demo account (`demo@example.com`) comes from the catalogue with
 |---|---|
 | Deploy a change | `git pull && docker compose up -d --build` |
 | Deploy a change to the Caddyfile | the same, then `docker compose up -d --force-recreate caddy` (a bind-mounted file keeps its old copy until the container is recreated) |
-| Logs of one service | `docker compose logs -f shop-a` (or `shop-b`, `shop-c`, `agent-alvaro`, `console`, `venue`, `caddy`) |
+| Logs of one service | `docker compose logs -f shop-a` (or `shop-b`, `shop-c`, `agent-alvaro`, `console`, `caddy`) |
 | Change who may sign in | `./set-secrets.sh`, then `docker compose up -d` (sessions already open stay valid until they expire) |
 | Reset the shops to their catalogues | `RESEED=1 docker compose up -d shop-a shop-b shop-c`, then `docker compose up -d` to drop the flag |
 | Change a secret | edit `.env`, then `docker compose up -d` |

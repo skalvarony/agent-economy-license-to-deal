@@ -300,7 +300,9 @@ def _describe(event: dict[str, Any]) -> str | None:
   if kind == "REDEMPTION_FAILED":
     return "Turned away at the venue; the merchant could not deliver"
   if kind == "MERCHANT_CANCELLED":
-    return "Cancelled by the merchant"
+    return "Cancelled by the marketplace"
+  if kind == "SHOPPER_CANCELLED":
+    return "Cancelled by you"
   if kind == "REFUND_AUTHORISED":
     back = money(d.get("amount", 0))
     coins = f" and {d['coins']} coins" if d.get("coins") else ""

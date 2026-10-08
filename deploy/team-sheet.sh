@@ -11,7 +11,7 @@ env_value() { grep -E "^$1=" .env | cut -d= -f2- || true; }
 
 echo "License to Deal — secrets sheet ($(date -u +%Y-%m-%dT%H:%MZ))"
 echo
-echo "Team user (console, venue, agent pages): $(env_value AGENT_USER)"
+echo "Team user (console, agent pages): $(env_value AGENT_USER)"
 echo "  password: the one typed into set-secrets.sh; only its hash is stored"
 echo
 echo "Demo shopper (every shop): demo@example.com / $(env_value DEMO_PASSWORD)"
