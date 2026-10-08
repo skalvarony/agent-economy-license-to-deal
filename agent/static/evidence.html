@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icon.png">
+<link rel="apple-touch-icon" href="/static/icon.png">
+<title>Evidence</title>
+<link rel="preload" href="/static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/agent.css">
+<link rel="stylesheet" href="/static/evidence.css">
+<script src="/static/evidence.js" defer></script>
+</head>
+<body class="evidence">
+<main class="paper">
+  <nav class="crumbs"><a href="/">← Back to the agent</a></nav>
+  <header>
+    <p class="tag">Evidence · for "I never bought this"</p>
+    <h1>Order <code data-order></code></h1>
+    <p class="muted" data-intro>What this agent recorded about the purchase, next to what the shop says it did.</p>
+  </header>
+
+  <section>
+    <h2>Findings</h2>
+    <ul class="findings" data-findings></ul>
+  </section>
+
+  <div class="sides">
+    <section>
+      <h2>What the agent recorded</h2>
+      <p class="muted">Written by the agent as it happened, in <code>approvals.jsonl</code>.</p>
+      <ol class="timeline" data-record></ol>
+    </section>
+    <section>
+      <h2>What the shop says</h2>
+      <p class="muted" data-shop></p>
+      <dl class="facts" data-order-facts></dl>
+    </section>
+  </div>
+</main>
+</body>
+</html>

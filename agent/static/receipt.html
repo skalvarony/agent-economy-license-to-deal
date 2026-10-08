@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icon.png">
+<link rel="apple-touch-icon" href="/static/icon.png">
+<title>Receipt</title>
+<link rel="preload" href="/static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/agent.css">
+<link rel="stylesheet" href="/static/evidence.css">
+<link rel="stylesheet" href="/static/receipt.css">
+<script src="/static/receipt.js" defer></script>
+</head>
+<body class="evidence receipt-page">
+<main class="paper">
+  <nav class="crumbs no-print"><a href="/">← Back to the agent</a> · <button type="button" class="quiet" onclick="print()">Print or save as PDF</button></nav>
+  <header class="head">
+    <div>
+      <p class="tag">Receipt</p>
+      <h1 data-shop>Shop</h1>
+      <p class="muted" data-shop-url></p>
+    </div>
+    <div class="right">
+      <p><b>Order</b> <code data-order></code></p>
+      <p><b>Date</b> <span data-date></span></p>
+      <p><b>Bought by</b> <span data-buyer></span></p>
+      <p><b>Through</b> <span data-agent></span></p>
+    </div>
+  </header>
+
+  <table class="lines">
+    <thead><tr><th>Item</th><th>Voucher code</th><th class="num">Amount</th></tr></thead>
+    <tbody data-lines></tbody>
+    <tfoot data-totals></tfoot>
+  </table>
+
+  <section class="terms-block">
+    <h2>Terms of this voucher</h2>
+    <dl class="facts" data-terms></dl>
+  </section>
+
+  <footer class="muted" data-footer></footer>
+</main>
+</body>
+</html>

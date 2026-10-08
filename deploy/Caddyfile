@@ -21,3 +21,18 @@ b.{$DOMAIN}, b.{$ALT_DOMAIN} {
 c.{$DOMAIN}, c.{$ALT_DOMAIN} {
 	reverse_proxy shop-c:8080
 }
+
+# Each person's agent, on its own name. The app asks the person to sign in;
+# its profile (shops fetch it) and its MCP address (secret in the path) are
+# the only open paths.
+{$AGENT_ALVARO_HOST} {
+	reverse_proxy agent-alvaro:8190
+}
+
+{$AGENT_DAVID_HOST} {
+	reverse_proxy agent-david:8190
+}
+
+{$AGENT_EMMANOUIL_HOST} {
+	reverse_proxy agent-emmanouil:8190
+}

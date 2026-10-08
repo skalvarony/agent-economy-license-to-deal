@@ -11,6 +11,7 @@ left and why.
 | A, Dusk Deals | :8181 | https://a.licensetodeal.app | Wellness, refundable, 10% back in coins |
 | B, Praha Pass | :8182 | https://b.licensetodeal.app | Food and activities, 5% back |
 | C, Dawn Saver | :8183 | https://c.licensetodeal.app | Wellness, cheaper, non-refundable, no coins |
+| The agents | :8190 | `ltd-agent-alvaro`, `ltd-agent-david`, `ltd-agent-emmanouil` `.duckdns.org` | One per person, on its own name, behind a password |
 
 ## Run
 
@@ -18,13 +19,15 @@ Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 
 ```shell
 scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
+scripts/agent.sh start       # http://localhost:8190
 python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking fee
-scripts/shops.sh stop
+scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
 Tests: `cd rest/python/server && uv run pytest` (340), `cd agent && uv run
 pytest` (40). Browser tests in
-`tests-e2e/` (Node 22.12+, shops running): `npm install && npx playwright
+`tests-e2e/` (Node 22.12+, shops and agent
+running): `npm install && npx playwright
 install chromium` once, then `npm test` (five shop flows). They use exact
 checks and need no model. Each shop also ships as a container (`docker build
 rest/python/server`); `SHOP`, `SIMULATION_SECRET` and the other knobs are
@@ -112,27 +115,34 @@ checkout; `POST /wallets/grant`, `GET /wallets/{email}`; `GET /inventory`,
 The person asks ("a spa day for two, refundable, under $120"). The agent
 searches the three shops, reads the person's coins in each, and proposes one
 deal: what, why, what it turned down and why, and the exact total with the
-coins/card split.
+coins/card split. Each turn shows the signed requests it sent.
 
 1. The brain (`agent/brain.py`) has three tools, `search_deals`,
    `read_wallets` and `propose_purchase`. None of them pays.
-2. `propose_purchase` opens a checkout in the shop, with the total the shop
-   will charge.
+2. `propose_purchase` opens a checkout in the shop; the page shows it with the
+   total the shop will charge.
 3. The person's approval is handled by code outside the brain
    (`agent/session.py`): it pays that checkout, once. A `409` from the shop
    stops it; the agent fetches the new total and asks again.
-4. The receipt records the voucher and compares charged with approved.
+4. The receipt shows the voucher and compares charged with approved.
 
 The agent is the person's: it keeps a **memory** in its run directory
 (`memory.json`), separate from any model. Three parts: a profile (city, who
 they buy for, a note), preferences the agent learns from what the person says
 (the brain's `remember` tool; the person can drop any of them), and **hard
-rules** only the person sets: a maximum total, refundable deals only,
-categories to avoid. The brain reads them with `recall` and sees them at the
-start of every conversation, but the rules are enforced in code:
+rules** only the person sets on the page: a maximum total, refundable deals
+only, categories to avoid. The brain reads them with `recall` and sees them
+at the start of every conversation, but the rules are enforced in code:
 `propose_purchase` refuses a deal that breaks one before any checkout is
-opened, whatever the brain asked. The memory's **presentation** says how a
-proposal is laid out: the best one or the three best to pick from, the
+opened, whatever the brain asked. The page also lists **everything bought**
+as the shops see it today (voucher code, state, what was charged) with a
+printable **receipt** per purchase (`/receipts/{order}`) and the evidence.
+
+The shop's data, the person's layout. The catalog sends everything the
+shop's own page shows (photos, highlights, the merchant's blurb, top
+reviews, terms) and the agent lays a proposal out the way its person set in
+the memory's **presentation**: the best one or the three best to pick from
+(a shortlist with "Pick this one", which opens that checkout instead), the
 photos, the price or the terms first, full or brief detail, and the language
 the agent writes in (English or Spanish; `texts.py` for the scripted brain
 and the session, an instruction for the model).
@@ -142,39 +152,53 @@ the agent's tools over MCP (JSON-RPC over HTTP): ChatGPT, Claude Code or any
 assistant that speaks it connects and gets `search_deals`, `read_wallets`,
 `recall`, `remember` and `propose_purchase` (plus `search` and `fetch`, as
 ChatGPT's connectors expect). The external brain thinks; the agent signs,
-keeps the memory and the rules, and holds the proposal until the person
-approves it on an interface the agent owns, stamped with who proposed it. In
-ChatGPT and in Claude (web and desktop) the proposal also arrives as a card
-drawn inside the chat: `propose_purchase` names the `ui://` resource
-`agent/widget.html`, which speaks both ChatGPT's Apps SDK bridge and the MCP
-Apps standard (the server negotiates the client's protocol version and
-declares the `io.modelcontextprotocol/ui` extension, which Claude requires).
-The card's Approve and Decline call `approve_from_card` / `decline_from_card`
-with a one-time token the result carries in `_meta`, which reaches the card
-but never the model; the record says the yes came "by card:ChatGPT" or
-"card:Claude". Clients without a UI (Claude Code) get a link to the proposal
-instead. **Telegram** is another channel of the same agent
-(`agent/telegram.py`): one bot per agent, the chat linked once with a
-one-time code; a message there is a turn of the conversation, every proposal
-arrives as a card with Approve / Not this one, and a tap is recorded as
-`method: telegram`. Approving happens only on an interface the agent owns:
-those cards, Telegram, voice later. There is no tool that pays, for any
-brain. Proposals that wait survive a restart. The key is a secret in the address, made on the first
-start (`mcp_key` in the run directory).
+keeps the memory and the rules, and puts the proposal in the person's
+**Approvals** (`/approvals/{id}`, the link the assistant is handed), stamped
+with who proposed it. In ChatGPT and in Claude (web and desktop) the
+proposal also arrives as a card drawn inside the chat: `propose_purchase`
+names the `ui://` resource `agent/widget.html`, which speaks both ChatGPT's
+Apps SDK bridge and the MCP Apps standard (the server negotiates the
+client's protocol version and declares the `io.modelcontextprotocol/ui`
+extension, which Claude requires). The card's Approve and Decline call
+`approve_from_card` / `decline_from_card` with a one-time token the result
+carries in `_meta`, which reaches the card but never the model; the record
+says the yes came "by card:ChatGPT" or "card:Claude". Clients without a UI
+(Claude Code) get the link to Approvals instead. **Telegram** is another
+channel of the same agent (`agent/telegram.py`): one bot per agent, the
+chat linked once from the page; a message there is a turn of the
+conversation, every proposal arrives as a card with Approve / Not this
+one, and a tap is recorded as `method: telegram`. Approving happens only
+on an interface the agent owns: its page, those cards, Telegram, voice
+later. There is no tool that pays, for any brain. Proposals that wait survive a restart. The key is a secret in
+the address, made on the first start (`mcp_key` in the run directory); the
+page shows the full address under "What it knows about you".
 
-Two brains: a scripted stand-in (fixed rules), or a language model over the
-OpenAI chat API (`agent/model_brain.py`) when `OPENAI_API_KEY` is set;
-`AGENT_MODEL` names it, `OPENAI_BASE_URL` moves it to another provider,
-`AGENT_BRAIN=scripted` forces the stand-in.
+Two brains, and the page says which one decides: a scripted stand-in (fixed
+rules), or a language model over the OpenAI chat API (`agent/model_brain.py`)
+when `OPENAI_API_KEY` is set; `AGENT_MODEL` names it, `OPENAI_BASE_URL` moves
+it to another provider, `AGENT_BRAIN=scripted` forces the stand-in. The model
+brain is tested against a fake of the API and has not run against the real
+one yet.
 
 The agent signs every request with an ES256 key it keeps in its run directory
-(`agent/signing.py`) and publishes as its profile. It keeps a journal
-(`journal.jsonl`: every message, tool call, proposal and receipt) and writes
-each approval and what came of it to `approvals.jsonl`, its own record of
-what the person agreed to. Settings (customer, test card, shops) are in
-`agent/agent.json`; `AGENT_NAME`, `AGENT_CUSTOMER_NAME` and
-`AGENT_CUSTOMER_EMAIL` say whose agent an instance is, and `SHOP_<ID>_URL`
-and `SHOP_<ID>_PUBLIC_URL` override a shop's addresses.
+and publishes at `/profile.json`. It keeps a journal (`journal.jsonl`: every
+message, tool call, proposal and receipt, with the channel each came
+through; the page shows it as one thread that never resets, newest at the
+bottom and paged back on scroll, marking what was said on Telegram or by
+another assistant over MCP, and **History** reads it by decision; the brain
+works on episodes of it, cut after three hours of silence) and writes each approval and what
+came of it to `approvals.jsonl`, and `/evidence/{order}` lays that record next to the
+shop's order with findings: approval on record, charged what was approved,
+signature verified, this agent, this customer, and what it cannot prove yet
+(the approval is a button press, not something the shop can verify).
+
+Settings (customer, test card, shops) are in `agent/agent.json`;
+`AGENT_NAME`, `AGENT_CUSTOMER_NAME` and `AGENT_CUSTOMER_EMAIL` say whose
+agent an instance is, and `SHOP_<ID>_URL` and `SHOP_<ID>_PUBLIC_URL` override
+a shop's addresses. On the server there is one agent per person, each with
+its own key and record, on a name apart from the shops' domain: the shops
+verify a key published somewhere they don't control, as they would in real
+life.
 
 ## Real and simulated
 
@@ -196,9 +220,9 @@ the merchant; the agent's decisions until a model is connected.
   `payment_rail.py`, `ledger.py`, `account_service.py`, `coin_service.py`,
   `visitor.py`; `routes/catalog.py`, `storefront.py`, `web_checkout.py`,
   `account.py`, `voucher.py`, `wallet.py` with `routes/assets/`;
-- `agent/`: `session.py` (conversation, tools, approval), `brain.py` and
-  `model_brain.py`, `shops.py` (UCP calls), `signing.py`, `memory.py`, `mcp.py` (the tool
-  server) with `widget.html` (the card).
+- `agent/`: `app.py` (web app), `session.py` (conversation, tools, approval,
+  evidence), `brain.py` and `model_brain.py`, `shops.py` (UCP calls),
+  `signing.py`, `static/`.
 - `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).

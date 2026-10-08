@@ -4,9 +4,29 @@
 #     --env-file .env.local up -d --build
 #
 # With DOMAIN=localhost, Caddy signs the certificates itself (curl -k, or
-# trust its CA). Agents on the laptop publish their profile over plain http,
-# which the shops accept only with this flag.
+# trust its CA). Inside the network the agent reaches the shops by their
+# container names, and the shops fetch its profile over plain http.
+x-local-agent-env: &local-agent-env
+  SHOP_A_URL: http://shop-a:8080
+  SHOP_B_URL: http://shop-b:8080
+  SHOP_C_URL: http://shop-c:8080
+  SHOP_A_PUBLIC_URL: https://a.${DOMAIN}
+  SHOP_B_PUBLIC_URL: https://b.${DOMAIN}
+  SHOP_C_PUBLIC_URL: https://c.${DOMAIN}
+
 services:
+  agent-alvaro:
+    environment:
+      <<: *local-agent-env
+      AGENT_URL: http://agent-alvaro:8190
+  agent-david:
+    environment:
+      <<: *local-agent-env
+      AGENT_URL: http://agent-david:8190
+  agent-emmanouil:
+    environment:
+      <<: *local-agent-env
+      AGENT_URL: http://agent-emmanouil:8190
   shop-a:
     environment:
       ALLOW_INSECURE_PROFILES: "1"

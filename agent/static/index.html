@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icon.png">
+<link rel="apple-touch-icon" href="/static/icon.png">
+<title>Your shopping agent</title>
+<link rel="preload" href="/static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/agent.css">
+<script src="/static/brands.js" defer></script>
+<script src="/static/guides.js" defer></script>
+<script src="/static/agent.js" defer></script>
+</head>
+<body>
+<aside class="side" aria-label="Shops and account">
+  <a class="brand" href="/">
+    <svg class="bot" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="2.6" r="1.6"/><rect x="11.3" y="3.6" width="1.4" height="2.6" rx=".7"/>
+      <rect x="1.2" y="10.5" width="2.2" height="4.4" rx="1.1"/><rect x="20.6" y="10.5" width="2.2" height="4.4" rx="1.1"/>
+      <rect x="3.8" y="6.4" width="16.4" height="12.4" rx="5.2"/>
+      <circle class="eye" cx="9" cy="11.8" r="1.7"/><circle class="eye" cx="15" cy="11.8" r="1.7"/>
+      <path class="smile" d="M9.2 15.1c1.6 1.4 4 1.4 5.6 0"/>
+    </svg>
+    <span data-name>Shopping agent</span>
+  </a>
+  <nav class="views" aria-label="Sections">
+    <button class="row on" type="button" data-view="chat">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-5A8 8 0 1121 12z"/></svg>
+      Chat
+    </button>
+    <button class="row" type="button" data-view="approvals">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12l2 2 4-4M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z"/></svg>
+      Approvals <span class="badge" id="approvals-badge" hidden></span>
+    </button>
+    <button class="row" type="button" data-view="history">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      History
+    </button>
+    <button class="row" type="button" data-view="purchases">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16l-1.5 12h-13zM9 7a3 3 0 016 0"/></svg>
+      Your purchases
+    </button>
+    <button class="row" type="button" data-view="memory">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>
+      What it knows about you
+    </button>
+  </nav>
+  <h2>Shops and your coins</h2>
+  <ul class="shops" id="shops"></ul>
+  <div class="me">
+    <span class="avatar" data-initials></span>
+    <span><strong data-customer></strong><small><span data-card></span> · test card</small></span>
+  </div>
+  <form class="who" method="post" action="/logout" id="who" hidden>
+    <span>Signed in as <b data-user></b></span>
+    <button type="submit" class="quiet">Sign out</button>
+  </form>
+</aside>
+
+<main>
+<div class="talk empty view" id="talk" data-view="chat">
+  <header class="bar">
+    <span class="title" data-name>Shopping agent</span>
+    <span class="brain" data-brain></span>
+  </header>
+  <div class="feed" id="feed" aria-live="polite">
+    <button class="earlier" id="earlier" type="button" hidden>Earlier</button>
+  </div>
+  <div class="dock">
+    <h1 class="hello">What should I find for you?</h1>
+    <form class="composer" id="composer" autocomplete="off">
+      <label class="sr" for="say">Tell the agent what you want</label>
+      <textarea id="say" name="text" rows="1" maxlength="2000" required
+        placeholder="Ask for anything, with your limits"></textarea>
+      <button type="submit" aria-label="Send">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+      </button>
+    </form>
+    <ul class="ideas">
+      <li><button type="button" data-idea>A spa day for two, refundable, under $120</button></li>
+      <li><button type="button" data-idea>A beer tasting for two under $50</button></li>
+      <li><button type="button" data-idea>Something fun to do, under $80, that I can cancel</button></li>
+    </ul>
+    <p class="fine">Your agent compares the shops and proposes. It can't pay until you approve the exact total.</p>
+  </div>
+</div>
+
+<section class="view pane" data-view="approvals" hidden>
+  <header class="bar"><span class="title">Approvals</span><span class="brain" id="approvals-summary"></span><button class="quiet" type="button" data-guide="approvals">How it works</button><button class="quiet" type="button" data-refresh-approvals>Refresh</button></header>
+  <div class="column">
+    <p class="muted">What waits for your yes, wherever it was proposed: in this chat, or by another assistant of yours connected over MCP. Nothing is paid until you approve the exact total here.</p>
+    <div id="approvals"></div>
+    <h3 class="decided-title" id="decided-title" hidden>Decided</h3>
+    <ul class="decided" id="decided"></ul>
+  </div>
+</section>
+
+<section class="view pane history-pane" data-view="history" hidden>
+  <header class="bar"><span class="title">History</span><span class="brain" id="history-summary"></span><button class="quiet" type="button" data-refresh-history>Refresh</button></header>
+  <div class="h-wrap">
+    <div class="h-tools">
+      <div class="chips" id="history-chips">
+        <button type="button" class="chip on" data-kind="all">Everything</button>
+        <button type="button" class="chip" data-kind="purchases">Purchases</button>
+        <button type="button" class="chip" data-kind="decisions">Decisions</button>
+        <button type="button" class="chip" data-kind="conversations">Conversations</button>
+      </div>
+      <div class="chips" id="source-chips">
+        <button type="button" class="chip on" data-source="all">Any source</button>
+      </div>
+    </div>
+    <div class="h-split" id="history-split">
+      <div class="h-list" id="history"></div>
+      <aside class="h-panel" id="history-panel" hidden></aside>
+    </div>
+  </div>
+</section>
+
+<section class="view pane history-pane" data-view="purchases" hidden>
+  <header class="bar"><span class="title">Your purchases</span><span class="brain" id="purchases-summary"></span><button class="quiet" type="button" data-refresh-purchases>Refresh</button></header>
+  <div class="h-wrap">
+    <div class="p-kpis" id="purchase-kpis" hidden></div>
+    <div class="h-tools">
+      <div class="chips" id="purchase-state-chips">
+        <button type="button" class="chip on" data-state="all">Everything</button>
+      </div>
+      <div class="chips" id="purchase-shop-chips"></div>
+    </div>
+    <div class="h-split" id="purchases-split">
+      <div class="h-list" id="purchases"></div>
+      <aside class="h-panel" id="purchases-panel" hidden></aside>
+    </div>
+  </div>
+</section>
+
+<section class="view pane settings-pane" data-view="memory" hidden>
+  <header class="bar"><span class="title">What your agent knows about you</span><span class="brain" id="settings-saved"></span></header>
+  <div class="settings">
+    <nav class="settings-nav" id="settings-nav" aria-label="Sections">
+      <button type="button" class="on" data-part="about"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>About you</button>
+      <button type="button" data-part="rules"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z"/></svg>Hard rules</button>
+      <button type="button" data-part="look"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg>How deals look</button>
+      <button type="button" data-part="learnt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 00-4 10.5V17h8v-3.5A6 6 0 0012 3zM10 21h4"/></svg>What it has learnt</button>
+      <button type="button" data-part="connect"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>Connections</button>
+      <p class="settings-foot">Preferences it may learn from what you say. Rules only you can set, and the app enforces them in code.</p>
+    </nav>
+    <div class="settings-body" id="settings-body">
+
+      <section class="s-card" id="part-about" data-part="about">
+        <header>
+          <span class="s-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg></span>
+          <div><h3>About you</h3><p>A few facts your agent uses to choose without asking twice.</p></div>
+        </header>
+        <div class="s-grid">
+          <label class="field"><span>City</span><input name="city" placeholder="Prague" autocomplete="off"></label>
+          <label class="field"><span>You usually buy for</span><input name="party" placeholder="two people" autocomplete="off"></label>
+          <label class="field wide"><span>A note for your agent</span><input name="note" placeholder="Weekends only; no early mornings" autocomplete="off"></label>
+        </div>
+      </section>
+
+      <section class="s-card" id="part-rules" data-part="rules">
+        <header>
+          <span class="s-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z"/></svg></span>
+          <div><h3>Hard rules</h3><p>A proposal that breaks one is refused before any checkout opens, whatever the model thinks.</p></div>
+          <button type="button" class="quiet" data-guide="rules">How it works</button>
+        </header>
+        <div class="in-force" id="in-force"></div>
+        <div class="s-row">
+          <div class="s-text"><b>Never above</b><small>The most your card may be asked to pay for one purchase.</small></div>
+          <label class="money"><span>$</span><input name="max_total" type="number" min="0" step="1" placeholder="no limit" inputmode="numeric"></label>
+        </div>
+        <div class="s-row">
+          <div class="s-text"><b>Refundable deals only</b><small>Skip anything that can't be cancelled for a refund.</small></div>
+          <label class="switch"><input name="refundable_only" type="checkbox"><span></span></label>
+        </div>
+        <div class="s-row">
+          <div class="s-text"><b>Never these categories</b><small>Your agent won't propose them, even if asked.</small></div>
+          <div class="toggles" id="avoid">
+            <button type="button" class="toggle" data-value="wellness">Wellness</button>
+            <button type="button" class="toggle" data-value="food">Food</button>
+            <button type="button" class="toggle" data-value="activities">Activities</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="s-card" id="part-look" data-part="look">
+        <header>
+          <span class="s-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 15l5-5 4 4 3-3 6 6"/></svg></span>
+          <div><h3>How deals look</h3><p>The shops send the data; your agent lays it out your way. The preview follows every change.</p></div>
+          <button type="button" class="quiet" id="look-reset">Reset</button>
+        </header>
+        <div class="look">
+          <div class="look-controls">
+            <div class="s-field"><span>How many</span>
+              <div class="seg" data-setting="shortlist"><button type="button" data-value="1">Just the best one</button><button type="button" data-value="3">The three best</button></div></div>
+            <div class="s-field"><span>What comes first</span>
+              <div class="seg" data-setting="lead"><button type="button" data-value="photo">Photos</button><button type="button" data-value="price">Price</button><button type="button" data-value="terms">Terms</button></div></div>
+            <div class="s-field"><span>How much detail</span>
+              <div class="seg" data-setting="detail"><button type="button" data-value="full">Full</button><button type="button" data-value="brief">Brief</button></div></div>
+            <div class="s-field"><span>Language it writes in</span>
+              <div class="seg" data-setting="language"><button type="button" data-value="en">English</button><button type="button" data-value="es">Español</button></div></div>
+            <div class="s-field"><span>This page</span>
+              <div class="seg" data-setting="theme"><button type="button" data-value="system">System</button><button type="button" data-value="light">Light</button><button type="button" data-value="dark">Dark</button></div></div>
+          </div>
+          <div class="look-preview">
+            <p class="preview-tag">Preview</p>
+            <div id="look-preview"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="s-card" id="part-learnt" data-part="learnt">
+        <header>
+          <span class="s-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 00-4 10.5V17h8v-3.5A6 6 0 0012 3zM10 21h4"/></svg></span>
+          <div><h3>What it has learnt</h3><p>Short facts your agent kept from what you said. Remove any of them.</p></div>
+        </header>
+        <ul class="prefs" id="prefs"></ul>
+        <h4>Recent history</h4>
+        <ul class="history" id="recent-history"></ul>
+      </section>
+
+      <section class="s-card" id="part-connect" data-part="connect">
+        <header>
+          <span class="s-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg></span>
+          <div><h3>Connections</h3><p>Other assistants can use this agent as their tools: they search and propose; you still approve, here or on the card they show.</p></div>
+          <button type="button" class="quiet" data-guide="approvals">How approving works</button>
+        </header>
+        <div class="s-row">
+          <div class="s-text"><b>Assistants that have used it</b><small>From the journal.</small></div>
+          <div class="used-by" id="used-by"></div>
+        </div>
+        <div class="s-row column">
+          <div class="s-text"><b>MCP address</b><small>Add it as a connector in ChatGPT (developer mode) or Claude. It is your key: keep it private. <a href="#" data-guide="chatgpt">Set up ChatGPT</a> · <a href="#" data-guide="claude">Set up Claude</a></small></div>
+          <p class="mcp"><code id="mcp-url"></code> <button type="button" class="quiet" id="copy-mcp">Copy</button></p>
+        </div>
+        <div class="s-row" id="telegram-row">
+          <div class="s-text"><b>Telegram</b><small><span id="telegram-note">Proposals and approvals on your phone.</span> <a href="#" data-guide="telegram">How to set it up</a></small></div>
+          <div class="telegram-actions" id="telegram-actions"></div>
+        </div>
+        <div class="s-row">
+          <div class="s-text"><b>Voice</b><small>Approve by phone call.</small></div>
+          <span class="pill plain">Soon</span>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</section>
+<dialog class="guide" id="guide" aria-labelledby="guide-title">
+  <div class="guide-body" id="guide-body"></div>
+</dialog>
+</main>
+</body>
+</html>
