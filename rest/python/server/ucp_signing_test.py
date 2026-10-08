@@ -367,12 +367,12 @@ class FreshnessTest(absltest.TestCase):
     self.assertEqual(self._verify(self.NOW - 300), "k")
 
   def test_created_in_the_future_refused(self) -> None:
-    """More than 60 seconds ahead of the clock is signature_expired."""
-    self._assert_refused("signature_expired", self.NOW + 61)
+    """More than 120 seconds ahead of the clock is signature_expired."""
+    self._assert_refused("signature_expired", self.NOW + 121)
 
   def test_small_clock_skew_allowed(self) -> None:
-    """A `created` up to 60 seconds ahead is clock skew, not an attack."""
-    self.assertEqual(self._verify(self.NOW + 60), "k")
+    """A `created` up to 120 seconds ahead is clock skew, not an attack."""
+    self.assertEqual(self._verify(self.NOW + 120), "k")
 
   def test_window_longer_than_480_seconds_refused(self) -> None:
     """A window (expires minus created) above 480 is refused."""

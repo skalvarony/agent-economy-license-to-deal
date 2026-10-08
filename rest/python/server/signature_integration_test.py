@@ -516,11 +516,11 @@ class FreshnessAndReplayTest(_SigTestBase):
     self._assert_error(response, "signature_expired")
 
   def test_created_in_the_future_refused(self) -> None:
-    """A created more than 60 seconds ahead is 401 signature_expired."""
+    """A created more than 120 seconds ahead is 401 signature_expired."""
     now = int(time.time())
     with self.client:
       response, _, _ = self._post(
-        "future_1", created=now + 120, expires=now + 420, nonce="n-fut"
+        "future_1", created=now + 200, expires=now + 500, nonce="n-fut"
       )
     self._assert_error(response, "signature_expired")
 

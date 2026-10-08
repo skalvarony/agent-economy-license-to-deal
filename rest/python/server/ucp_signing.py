@@ -57,7 +57,7 @@ _KEY_CACHE: dict[str, tuple[float, list[dict]]] = {}
 MAX_WINDOW_SECONDS = 480
 DEFAULT_MAX_AGE_SECONDS = 300
 # How far ahead of the shop's clock a `created` may be (clock skew).
-CLOCK_SKEW_SECONDS = 60
+CLOCK_SKEW_SECONDS = 120
 
 # Nonces already seen: (keyid, nonce) -> the time after which the signature
 # could no longer be accepted anyway. In memory and per process: one process

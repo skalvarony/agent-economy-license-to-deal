@@ -2329,7 +2329,7 @@ class StripeRailTest(ShopTestCase):
     message = self._refused("pm_card_radarBlock")
 
     self.assertEqual(message["code"], "RISK_BLOCKED")
-    self.assertIn("fraud check blocked this payment", message["content"])
+    self.assertIn("suspected fraud", message["content"])
     self.assertEqual(self._stock("spa-60"), 2)
     self.assertNotIn("VOUCHER_ISSUED", self._events())
     self.assertEqual(self._declines()[0]["detail"]["code"], "RISK_BLOCKED")

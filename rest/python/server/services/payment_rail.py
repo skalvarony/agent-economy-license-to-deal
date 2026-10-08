@@ -182,9 +182,12 @@ class StripeRail:
     if response.status_code >= 400:
       problem = body.get("error") or {}
       if {problem.get("decline_code"), problem.get("code")} & FRAUD_CODES:
-        # Radar refused the charge itself. Say so, not "card declined".
+        # Stripe's fraud check (Radar) answers with these codes, but a card's
+        # bank can also decline as "fraudulent", so the message names both.
         raise PaymentFailedError(
-          "Stripe's fraud check blocked this payment", code="RISK_BLOCKED"
+          "Declined as suspected fraud, by Stripe's fraud check or by the"
+          " card's bank",
+          code="RISK_BLOCKED",
         )
       raise PaymentFailedError(
         f"Stripe declined: {problem.get('message', response.reason_phrase)}",

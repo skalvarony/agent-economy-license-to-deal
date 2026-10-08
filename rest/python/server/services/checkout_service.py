@@ -850,11 +850,20 @@ class CheckoutService:
         payment_id = await rail.lock(
           total, checkout.currency, checkout.id, credential_token
         )
-        risk = await rail.assess(payment_id)
+        try:
+          risk = await rail.assess(payment_id)
+        except Exception:  # noqa: BLE001
+          # No verdict: the sale goes on as it did before the fraud check.
+          logger.warning("No fraud check for payment %s", payment_id)
+          risk = None
         if risk and risk["level"] == "highest":
           # Authorised, but Stripe's fraud check rates it the riskiest.
           # Release the hold now: nothing is charged and no voucher exists.
-          await rail.refund(payment_id, total)
+          # A failed release must not hide why the payment is refused.
+          try:
+            await rail.refund(payment_id, total)
+          except Exception:  # noqa: BLE001
+            logger.warning("Could not release payment %s", payment_id)
           raise PaymentFailedError(
             "Stripe's fraud check rated this payment the highest risk",
             code="RISK_HIGHEST",
