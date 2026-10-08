@@ -1,0 +1,177 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root { --ink:#0d0d0d; --muted:#5d5d5d; --faint:#8a8a8a; --line:#e3e3e3; --bg:#fafaf9; --raised:#fff; --good:#0a7a4b; --good-soft:#eef8f2; --accent:#1d4ed8; --accent-soft:#e8efff; --warn:#b45309; --warn-soft:#fff5e6; }
+* { box-sizing:border-box; }
+body { margin:0; width:1800px; height:1000px; background:var(--bg); font:15px/1.4 Inter, system-ui, sans-serif; color:var(--ink); }
+.poster { position:relative; width:1800px; height:1000px; padding:44px 52px 40px; display:grid; grid-template-rows:auto 1fr auto; gap:26px; }
+header { display:flex; align-items:flex-end; justify-content:space-between; }
+header h1 { margin:0; font-size:34px; letter-spacing:-.02em; font-weight:700; }
+header h1 small { display:block; font-size:17px; font-weight:500; color:var(--muted); margin-top:4px; letter-spacing:0; }
+header .tag { font-size:13px; color:var(--muted); text-align:right; line-height:1.5; }
+header .tag b { color:var(--ink); font-weight:600; }
+.stage { display:grid; grid-template-columns: 300px 44px 470px 44px 470px 44px 300px; align-items:stretch; }
+.col { display:grid; gap:14px; align-content:start; }
+.box { background:var(--raised); border:1px solid var(--line); border-radius:18px; padding:18px 20px; box-shadow:0 1px 2px rgb(0 0 0 / 4%); }
+.box h2 { margin:0 0 4px; font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); }
+.box h3 { margin:0 0 10px; font-size:19px; font-weight:700; letter-spacing:-.01em; display:flex; align-items:center; gap:10px; }
+.box h3 svg { width:22px; height:22px; color:var(--ink); }
+.box p { margin:0 0 10px; color:var(--muted); font-size:13.5px; }
+ul { list-style:none; margin:0; padding:0; display:grid; gap:7px; }
+li { display:flex; align-items:flex-start; gap:9px; font-size:13.5px; line-height:1.35; }
+li svg { width:16px; height:16px; flex:none; margin-top:2px; color:var(--muted); }
+li b { font-weight:600; }
+.chips { display:grid; gap:8px; }
+.chip { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--raised); font-weight:500; font-size:14px; }
+.chip .brand, .chip > svg { width:20px; height:20px; flex:none; }
+.chip small { display:block; font-weight:400; color:var(--muted); font-size:12px; }
+.arrow { display:flex; align-items:center; justify-content:center; position:relative; }
+.arrow::before { content:""; position:absolute; left:0; right:0; top:50%; border-top:2px dashed #c9c9c9; }
+.arrow span { position:relative; background:var(--bg); padding:4px 0; font-size:11.5px; color:var(--faint); text-align:center; writing-mode:vertical-rl; transform:rotate(180deg); letter-spacing:.04em; }
+.agent { border-color:#111; box-shadow:0 0 0 1px #111 inset, 0 10px 30px rgb(0 0 0 / 7%); }
+.agent .name { display:flex; align-items:center; gap:10px; }
+.agent .name .bot { width:40px; height:40px; border-radius:12px; background:var(--ink); color:#fff; display:grid; place-items:center; }
+.agent .name .bot svg { width:24px; height:24px; color:#fff; }
+.pledge { margin-top:12px; padding:10px 12px; border-radius:10px; background:var(--good-soft); color:var(--good); font-weight:600; font-size:13px; display:flex; gap:8px; align-items:center; }
+.pledge svg { width:16px; height:16px; }
+.shops { display:grid; gap:10px; }
+.shop { display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--raised); }
+.slogo { width:36px; height:36px; border-radius:9px; flex:none; }
+.shop b { display:block; font-size:14px; }
+.shop small { color:var(--muted); font-size:12px; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.rails { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.band { display:grid; grid-template-columns: repeat(5, 1fr); gap:14px; }
+.band .box { padding:14px 18px; }
+.band h4 { margin:0 0 3px; font-size:14px; font-weight:700; display:flex; align-items:center; gap:8px; }
+.band h4 svg { width:17px; height:17px; }
+.band p { margin:0; font-size:12.5px; }
+.stripe { color:#635bff; font-weight:700; }
+.kicker { font-size:12px; color:var(--faint); margin-top:6px; }
+.emph { color:var(--accent); font-weight:600; }
+</style></head><body><div class="poster">
+<header>
+  <h1>License to Deal <small>A personal shopping agent that buys local-experience vouchers for you — with your approval, from marketplaces that verify the agent.</small></h1>
+  <div class="tag"><b>Agents 0.0.7 · Prague, 8–9 Oct 2026</b><br>Demo in Stripe test mode · simulated catalogue · real protocol (UCP)</div>
+</header>
+<div class="stage">
+  <div class="col">
+    <div class="box">
+      <h2>You</h2>
+      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg> One person, many doors</h3>
+      <p>Talk to your agent from wherever you are. Every door lands in the same thread.</p>
+      <div class="chips">
+        <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>Agent web app<small>one endless thread, approvals, history, purchases, what it knows about you</small></span></div>
+        <div class="chip"><svg class="brand" viewBox="0 0 24 24" width="20" height="20"><path fill="#26A5E4" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg><span>Telegram<small>proposals with Approve / Decline buttons on your phone</small></span></div>
+        <div class="chip"><svg class="brand" viewBox="0 0 24 24" width="20" height="20"><path fill="#000000" d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg><span>ChatGPT<small>a live card inside the chat, Approve included (Apps SDK)</small></span></div>
+        <div class="chip"><svg class="brand" viewBox="0 0 24 24" width="20" height="20"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg><span>Claude Desktop · Claude Code<small>the same card over MCP Apps; Code proposes and links</small></span></div>
+      </div>
+      <p class="kicker">Each message, proposal and decision carries the channel it came through.</p>
+    </div>
+  </div>
+  <div class="arrow"><span>ask · approve</span></div>
+  <div class="col">
+    <div class="box agent">
+      <h2>Your agent · one per person</h2>
+      <h3 class="name"><span class="bot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="3.5" r="1.3"/><path d="M12 5v2"/><rect x="4.5" y="7" width="15" height="11" rx="4.5"/><circle cx="9.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M9.5 14.8c1.4 1.1 3.6 1.1 5 0"/></svg></span> Finds the deal, never pays without you</h3>
+      <div class="two">
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4a3 3 0 00-3 3v1a3 3 0 00-2 3 3 3 0 002 3v1a3 3 0 003 3h1V4zM15 4a3 3 0 013 3v1a3 3 0 012 3 3 3 0 01-2 3v1a3 3 0 01-3 3h-1V4z"/></svg><span><b>A brain that decides</b> — an OpenAI model when the key is set, a scripted stand-in otherwise. The page says which.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4-8 4-8-4z"/><path d="M4 11l8 4 8-4M4 15l8 4 8-4"/></svg><span><b>Knows you</b> — budget, categories, refundable-only, how you like deals shown. Editable, with a live preview.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span><b>Searches all marketplaces</b> and proposes the best one — or the three best — with the exact total the shop quotes.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg><span><b>Uses your coins</b> (store credit) and promo codes when they help.</span></li>
+        </ul>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l2 2M14 9l2 2"/></svg><span><b>Signs every request</b> (RFC 9421, ES256) with a key published at /profile.json.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span><b>Pays with a token</b>, never a card number: a Stripe pm_… the shop charges on its own account.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 19a2 2 0 012-2h13"/></svg><span><b>Keeps the record</b> — journal, approvals with channel, receipts; <b>/evidence</b> answers "I never bought this".</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></svg><span><b>Tells the shop how you decided</b> — proposer, channel, time — so the shop can show it to you.</span></li>
+        </ul>
+      </div>
+      <div class="pledge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg> The model has no tool that pays. Paying is a separate route that only your Approve can trigger, for that exact total.</div>
+    </div>
+    <div class="box">
+      <h2>Three agents, three people</h2>
+      <p style="margin:0">Álvaro, David, Emmanouil — each with their own agent, sign-in, Telegram bot and MCP key, buying under their own email in every shop.</p>
+    </div>
+  </div>
+  <div class="arrow"><span>UCP · signed</span></div>
+  <div class="col">
+    <div class="box">
+      <h2>Marketplaces</h2>
+      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l1.5-5h13L20 10M4 10v9h16v-9M4 10a3 3 0 006 0 3 3 0 006 0 3 3 0 004 0"/></svg> Three shops, for agents and for people</h3>
+      <div class="shops">
+        <div class="shop"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="slogo">
+  <rect class="slogo" rx="8" fill="#6d28d9"/>
+  <!-- Dusk: a crescent moon and the first star. -->
+  <path d="M19.5 7.5a8.5 8.5 0 1 0 5.3 15.2 9.5 9.5 0 0 1-5.3-15.2z" fill="#fff"/>
+  <path d="M9.4 9.2l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z" fill="#fff"/>
+</svg>
+<span><b>Dusk Deals</b><small>Wellness in Prague, for less · 10% back in coins</small></span></div>
+        <div class="shop"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="slogo">
+  <rect class="slogo" rx="8" fill="#c2410c"/>
+  <!-- A pass: a ticket with punched sides; on it, Prague's towers. -->
+  <path d="M6 9.5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3.2a3.3 3.3 0 0 0 0 6.6v3.2a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-3.2a3.3 3.3 0 0 0 0-6.6z" fill="#fff"/>
+  <path d="M10.2 20.5v-6l1.6-2.6 1.6 2.6v6zM14.4 20.5v-8.3l1.6-2.7 1.6 2.7v8.3zM18.6 20.5v-6l1.6-2.6 1.6 2.6v6z" fill="#c2410c"/>
+  <rect x="9" y="20.5" width="14" height="1.6" rx=".8" fill="#c2410c"/>
+</svg>
+<span><b>Praha Pass</b><small>Food and things to do · 5% back in coins</small></span></div>
+        <div class="shop"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="slogo">
+  <rect class="slogo" rx="8" fill="#0f766e"/>
+  <!-- Dawn: the sun rising over the horizon, rays all around. -->
+  <path d="M9.5 20a6.5 6.5 0 0 1 13 0z" fill="#fff"/>
+  <rect x="5.5" y="20" width="21" height="2.2" rx="1.1" fill="#fff"/>
+  <path d="M16 6v3.2M8.9 9l2.2 2.3M23.1 9l-2.2 2.3M5.5 15.5h3.2M23.3 15.5h3.2" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
+<span><b>Dawn Saver</b><small>Final-sale wellness, lowest prices · no coins</small></span></div>
+      </div>
+      <div class="two" style="margin-top:14px">
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l2 2M14 9l2 2"/></svg><span><b>UCP for agents</b> — discovery, catalogue search, checkout, complete. Unsigned or badly signed agents are refused.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg><span><b>Refuses to charge</b> if the total moved since the agent read it (409), stock ran out, or the buyer is over the deal's limit.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 000 4v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2a2 2 0 000-4z"/><path d="M10 6v12" stroke-dasharray="2 2"/></svg><span><b>Issues vouchers</b> with codes, service window, refund policy, validity.</span></li>
+        </ul>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span><b>A real storefront for people</b> — browse, cart, Stripe Elements checkout, account, coins.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg><span><b>My vouchers shows who bought</b> — you on the web, or your agent: which app you approved in, the signature's outcome, and the shop's own ledger of the order.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a8 8 0 0114-4.9M20 14a8 8 0 01-14 4.9"/><path d="M18 2v4h-4M6 22v-4h4"/></svg><span><b>Refunds</b> back to card and wallet; codes voided; everything in an append-only ledger.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="arrow"><span>charge · refund</span></div>
+  <div class="col">
+    <div class="box">
+      <h2>Money</h2>
+      <h3><span class="stripe">Stripe</span> test mode</h3>
+      <ul>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg><span>PaymentIntents with <b>manual capture</b>: authorise, issue the voucher, then capture. A failure cancels, nothing charged.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a8 8 0 0114-4.9M20 14a8 8 0 01-14 4.9"/><path d="M18 2v4h-4M6 22v-4h4"/></svg><span>Full refunds through Stripe; declines surface as 402 and a ledger event.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Only Stripe ever sees a card number.</span></li>
+      </ul>
+    </div>
+    <div class="box">
+      <h2>For the marketplace</h2>
+      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg> Shops console</h3>
+      <ul>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg><span>Orders across the three shops, agent vs human, payment details from Stripe, refunds in one click.</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></svg><span>Inbox marks: new, seen, handled; what needs attention.</span></li>
+      </ul>
+    </div>
+    <div class="box">
+      <h2>For the merchant</h2>
+      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/><path d="M3 21h18M15 12h.01"/></svg> Venue simulator</h3>
+      <ul>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 000 4v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2a2 2 0 000-4z"/><path d="M10 6v12" stroke-dasharray="2 2"/></svg><span>Arrivals by venue; redeem, turn away, cancel — the shop and the agent see it at once.</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="band">
+  <div class="box"><h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg> Verified agent</h4><p>Every request signed; the shop checks the key before it answers.</p></div>
+  <div class="box"><h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg> Exact total or nothing</h4><p>Approve covers one total. If it moves, the shop refuses and the agent asks again.</p></div>
+  <div class="box"><h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 19a2 2 0 012-2h13"/></svg> Two independent records</h4><p>The agent's journal and the shop's ledger, joined by the Stripe payment id. Evidence cross-checks them.</p></div>
+  <div class="box"><h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg> Human or agent, always visible</h4><p>Each order says who placed it and through which app you approved.</p></div>
+  <div class="box"><h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 21h4"/></svg> Next: signed approval (AP2)</h4><p>Your yes travels as a signed mandate the shop verifies before charging — by the agent, or by you with Face ID.</p></div>
+</div>
+</div></body></html>
