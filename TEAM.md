@@ -122,7 +122,9 @@ for browser tests, Docker Compose. Tests: 340 (shops) + 38 (agent) + 9 + 5 +
 - Knows you (budget, categories, refundable-only, how you like deals shown);
   editable with a live preview.
 - Searches the three shops, proposes the best deal — or the three best — with
-  the exact total the shop quotes; uses your coins and promo codes.
+  the exact total the shop quotes; uses your coins and promo codes. Asks
+  for a day and an hour when you gave none, checks the shop's open slots
+  and books the one you named ("Saturday at 11:00").
 - Never pays without your Approve; the model has no tool that pays. Approve
   covers one exact total; if the shop changes it, it stops and asks again.
 - Approvals from the web, from the card in ChatGPT/Claude, or from Telegram
@@ -136,6 +138,10 @@ for browser tests, Docker Compose. Tests: 340 (shops) + 38 (agent) + 9 + 5 +
   per-person limit.
 - Vouchers with codes, service window, refund policy, validity; coins (store
   credit, 1 coin = $1 in its shop); promo codes; booking fee control.
+- Every deal is booked for a date and time when bought: days, hours, slot
+  length and places per slot come from the catalogue; the shop lists its
+  open slots, the web checkout and the agent pick one, a full or past slot
+  is refused before any charge, and a refund gives the place back.
 - Storefront for people: browse, cart, Stripe Elements checkout, account page
   (coins, orders, who buys for you), My vouchers (newest first, filters, who
   bought it and through which app, the shop's own ledger of the order).

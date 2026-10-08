@@ -7,5 +7,6 @@
   "hero_sub": "The lowest prices in town. All sales are final: no changes, no refunds.",
   "promo_code": "DAWN5",
   "font": "archivo",
-  "coins_back_percent": 0
+  "coins_back_percent": 0,
+  "timezone": "Europe/Prague"
 }

@@ -25,9 +25,12 @@ import config
 import db
 import dependencies
 from exceptions import ConsentRequiredError
+from exceptions import InvalidRequestError
 from exceptions import OutOfStockError
 from exceptions import PaymentFailedError
+from exceptions import BookingRequiredError
 from exceptions import PurchaseLimitError
+from exceptions import SlotUnavailableError
 from exceptions import ResourceNotFoundError
 from fastapi import APIRouter
 from fastapi import Depends
@@ -49,6 +52,7 @@ from routes import storefront
 from routes.storefront import esc
 from routes.storefront import money
 from services import visitor
+from services import booking_service
 from services import coin_service
 from services import ledger
 from services import payment_rail
@@ -80,6 +84,9 @@ NOTICES = {
   ),
   "declined": "Your card was declined and nothing was charged. Try another.",
   "limit": "One of these deals has a limit per person, and this goes over it.",
+  "booking": "Choose a date and time for your visit before you pay.",
+  "slot": "That time isn't available any more. Pick another.",
+  "booked": "Your date and time are set. Review and pay when ready.",
   "promo": "That promo code isn't valid.",
   "paid": "Payment received. Your voucher is ready.",
 }
@@ -570,15 +577,20 @@ async def checkout_page(
     return _redirect("/cart")
 
   lines = ""
+  missing = False
   for line in checkout["line_items"]:
     item = line["item"]
     amount = _total(line["totals"])
+    picker = await _slot_picker(checkouts, checkout_id, line)
+    booking = (line.get("service") or {}).get("booking") or {}
+    missing = missing or (booking.get("required") and not booking.get("starts_at"))
     lines += f"""
       <li class="line review">
         {_thumb(line)}
         <div class="info">
           <h3>{esc(item["title"])}</h3>
           <p class="where">Quantity {line["quantity"]} · {money(amount)}</p>
+          {picker}
           {_terms(line)}
         </div>
       </li>"""
@@ -608,6 +620,10 @@ async def checkout_page(
     if total
     else f"Pay with {wallet.get('applied', 0)} coins"
   )
+  if missing:
+    # The shop refuses the payment until every visit has its slot; say so
+    # on the button, and leave the form in place for the refusal's words.
+    pay_label = "Choose a date and time first"
   body = f"""
     <nav class="crumbs"><a href="/cart">Cart</a> › Checkout</nav>
     <h1 class="title">Review and pay</h1>
@@ -633,6 +649,65 @@ async def checkout_page(
       </aside>
     </div>"""
   return HTMLResponse(storefront.page("Checkout", body, request, shopper))
+
+
+async def _slot_picker(
+  checkouts: CheckoutService, checkout_id: str, line: dict[str, Any]
+) -> str:
+  """Render the choice of date and time for a line booked at purchase.
+
+  A plain form: a list of the open slots, two weeks ahead, grouped by day,
+  with the places left in each; the chosen one, if any, is selected.
+  """
+  booking = (line.get("service") or {}).get("booking") or {}
+  if not booking.get("required"):
+    return ""
+  found = await db.get_option(checkouts.products_session, line["item"]["id"])
+  if not found:
+    return ""
+  listed = await booking_service.availability(
+    checkouts.transactions_session, found[0], days=booking_service.MAX_DAYS
+  )
+  chosen = booking.get("starts_at")
+  groups = ""
+  for day in listed["days"]:
+    if not day["slots"]:
+      continue
+    options = ""
+    for slot in day["slots"]:
+      full = slot["left"] < line["quantity"]
+      note = "full" if slot["left"] <= 0 else f"{slot['left']} left"
+      options += (
+        f'<option value="{esc(slot["starts_at"])}"'
+        f'{" selected" if slot["starts_at"] == chosen else ""}'
+        f'{" disabled" if full and slot["starts_at"] != chosen else ""}>'
+        f'{esc(storefront.moment(slot["starts_at"])[-5:])} · {note}</option>'
+      )
+    groups += (
+      f'<optgroup label="{esc(storefront.day(day["date"] + "T00:00:00"))}">'
+      f"{options}</optgroup>"
+    )
+  state = (
+    f'<p class="booked">Booked for <b>{esc(storefront.slot_text(booking))}</b>.'
+    " Change it below if you need to.</p>"
+    if chosen
+    else '<p class="unbooked">Pick the date and time of your visit.</p>'
+  )
+  return f"""
+    <form class="slot" method="post"
+          action="/checkout/{esc(checkout_id)}/booking">
+      <input type="hidden" name="item_id" value="{esc(line["item"]["id"])}">
+      {state}
+      <label>Date and time
+        <select name="starts_at" required data-slot>
+          <option value="">Choose…</option>
+          {groups}
+        </select>
+      </label>
+      <button type="submit">{"Change the time" if chosen else "Set the time"}</button>
+      <p class="tech">{esc(storefront.hours_text(booking))} · times in
+        {esc(booking.get("timezone", ""))}</p>
+    </form>"""
 
 
 def _card_form(rail: str) -> str:
@@ -719,6 +794,34 @@ async def use_coins(
     )
     await checkouts.update_checkout(checkout_id, update, str(uuid.uuid4()))
   return _redirect(here)
+
+
+@router.post("/checkout/{id}/booking", include_in_schema=False)
+async def choose_slot(
+  request: Request,
+  shopper: storefront.ShopperSession,
+  checkouts: Checkouts,
+  checkout_id: Annotated[str, Path(..., alias="id")],
+) -> RedirectResponse:
+  """Set the date and time of a visit; the shop checks it has room."""
+  here = f"/checkout/{checkout_id}"
+  if not shopper.user:
+    return storefront.login_redirect(here)
+  form = await _form(request)
+  checkout = await _load_checkout(checkouts, checkout_id)
+  if checkout["status"] != "ready_for_complete":
+    return _redirect(here)
+  item_id, starts_at = form.get("item_id", ""), form.get("starts_at", "")
+  if not item_id or not starts_at:
+    return _redirect(f"{here}?notice=booking")
+  try:
+    update = UnifiedCheckoutUpdateRequest(
+      line_items=_checkout_lines(checkout), bookings={item_id: starts_at}
+    )
+    await checkouts.update_checkout(checkout_id, update, str(uuid.uuid4()))
+  except (SlotUnavailableError, InvalidRequestError):
+    return _redirect(f"{here}?notice=slot")
+  return _redirect(f"{here}?notice=booked")
 
 
 @router.post("/checkout/{id}/pay", include_in_schema=False)
@@ -816,6 +919,10 @@ async def pay(
     return refuse("stock")
   except PurchaseLimitError as e:
     return refuse("limit", message=e.message)
+  except BookingRequiredError:
+    return refuse("booking")
+  except SlotUnavailableError as e:
+    return refuse("slot", message=e.message if _wants_json(request) else "")
   except PaymentFailedError as e:
     # Say why, when the rail says: "Your card was declined." beats a code.
     return refuse("declined", message=e.message if _wants_json(request) else "")

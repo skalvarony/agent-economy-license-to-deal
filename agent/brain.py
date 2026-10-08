@@ -131,6 +131,32 @@ _BUDGET = [
   r"\$\s*(\d+)",
   r"(\d+)\s*(?:dollars|usd)",
 ]
+_WEEKDAYS = {
+  "monday": 0, "mon": 0, "lunes": 0,
+  "tuesday": 1, "tue": 1, "tues": 1, "martes": 1,
+  "wednesday": 2, "wed": 2, "miércoles": 2, "miercoles": 2,
+  "thursday": 3, "thu": 3, "thurs": 3, "jueves": 3,
+  "friday": 4, "fri": 4, "viernes": 4,
+  "saturday": 5, "sat": 5, "sábado": 5, "sabado": 5,
+  "sunday": 6, "sun": 6, "domingo": 6,
+}
+_MONTHS = {
+  "jan": 1, "ene": 1, "feb": 2, "mar": 3, "apr": 4, "abr": 4, "may": 5,
+  "jun": 6, "jul": 7, "aug": 8, "ago": 8, "sep": 9, "oct": 10, "nov": 11,
+  "dec": 12, "dic": 12,
+}
+_MONTH_WORD = r"(jan|ene|feb|mar|apr|abr|may|jun|jul|aug|ago|sep|oct|nov|dec|dic)[a-z]*"
+_DAY_PATTERNS = [
+  r"\b(\d{4})-(\d{2})-(\d{2})\b",
+  r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+|de\s+)?" + _MONTH_WORD + r"\b",
+  r"\b" + _MONTH_WORD + r"\s+(\d{1,2})\b",
+]
+_TIME_PATTERNS = [
+  r"\b(?:at|a las|a la)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|h)?\b",
+  r"\b(\d{1,2}):(\d{2})\s*(am|pm)?\b",
+  r"\b(\d{1,2})\s*(am|pm)\b",
+  r"\b(\d{1,2})\s*(h)\b",
+]
 _REFUNDABLE = r"refund|cancel|change my mind"
 _NO_COINS = r"(?:no|without|don'?t use|do not use|keep(?: my)?) coins"
 # Words of a request that say nothing about which deal is wanted.
@@ -142,9 +168,78 @@ _FILLER = frozenset(
     " that up max most less than more usd dollars coins coin use can could you"
     " need looking look like would some one is it be deal deals prague cheap"
     " cheapest best good nice no not without keep free cancellation cancel"
-    " budget within if able",
+    " budget within if able today tomorrow hoy mañana next this coming at"
+    " am pm h oclock o'clock time hour hours hora horas las el de por la"
+    " monday tuesday wednesday thursday friday saturday sunday mon tue wed thu"
+    " fri sat sun lunes martes miercoles jueves viernes sabado domingo jan"
+    " feb mar apr may jun jul aug sep oct nov dec january february march"
+    " april june july august september october november december enero"
+    " febrero marzo abril mayo junio julio agosto septiembre octubre"
+    " noviembre diciembre",
   )
 )
+
+
+def _when(
+  lowered: str, now: datetime.datetime
+) -> tuple[datetime.datetime | None, bool]:
+  """Read a day and an hour from a request, as local wall-clock time.
+
+  Returns the moment and whether an hour was given. A day alone is the day
+  at 00:00; an hour alone is today, or tomorrow if that hour has passed.
+  """
+  day = None
+  if re.search(r"\b(today|hoy)\b", lowered):
+    day = now.date()
+  elif re.search(r"\b(tomorrow|mañana)\b", lowered):
+    day = now.date() + datetime.timedelta(days=1)
+  elif found := re.search(_DAY_PATTERNS[0], lowered):
+    day = datetime.date(*map(int, found.groups()))
+  elif found := re.search(_DAY_PATTERNS[1], lowered):
+    day = _day_of(now, int(found.group(1)), _MONTHS[found.group(2)])
+  elif found := re.search(_DAY_PATTERNS[2], lowered):
+    day = _day_of(now, int(found.group(2)), _MONTHS[found.group(1)])
+  else:
+    for word, weekday in _WEEKDAYS.items():
+      if re.search(rf"\b{word}\b", lowered):
+        day = now.date() + datetime.timedelta(
+          days=(weekday - now.weekday()) % 7
+        )
+        break
+  hour = None
+  for pattern in _TIME_PATTERNS:
+    if found := re.search(pattern, lowered):
+      groups = found.groups()
+      h = int(groups[0])
+      minute = int(groups[1]) if len(groups) > 2 and groups[1] else 0
+      suffix = groups[-1] or ""
+      if suffix == "pm" and h < 12:
+        h += 12
+      if suffix == "am" and h == 12:
+        h = 0
+      if 0 <= h < 24 and 0 <= minute < 60:
+        hour = datetime.time(h, minute)
+        break
+  if day is None and hour is None:
+    return None, False
+  if day is None:
+    day = now.date()
+    if datetime.datetime.combine(day, hour) <= now:
+      day += datetime.timedelta(days=1)
+  return datetime.datetime.combine(day, hour or datetime.time(0, 0)), (
+    hour is not None
+  )
+
+
+def _day_of(now: datetime.datetime, day: int, month: int) -> datetime.date:
+  """The next occurrence of a day and month, this year or the next."""
+  try:
+    date = datetime.date(now.year, month, day)
+  except ValueError:
+    return now.date()
+  if date < now.date():
+    date = datetime.date(now.year + 1, month, day)
+  return date
 
 
 @dataclasses.dataclass
@@ -156,6 +251,9 @@ class Ask:
   refundable: bool
   use_coins: bool
   words: set[str]
+  # The day and hour asked for, as local wall-clock time, if any.
+  when: datetime.datetime | None = None
+  hour_given: bool = False
 
   @property
   def understood(self) -> bool:
@@ -167,9 +265,14 @@ def _words(text: str) -> set[str]:
   return set(re.findall(r"[a-z]+", text.lower()))
 
 
-def parse(text: str) -> Ask:
-  """Read a request such as "a spa day for two, refundable, under $120"."""
+def parse(text: str, now: datetime.datetime | None = None) -> Ask:
+  """Read a request such as "a spa day for two, refundable, under $120".
+
+  `now` fixes what "Saturday" or "tomorrow" mean (the tests set it).
+  """
   lowered = text.lower()
+  now = now or datetime.datetime.now()
+  when, hour_given = _when(lowered, now)
   words = _words(lowered)
   category = next(
     (name for name, tells in _CATEGORY_WORDS.items() if words & tells), None
@@ -184,8 +287,41 @@ def parse(text: str) -> Ask:
     budget=budget,
     refundable=bool(re.search(_REFUNDABLE, lowered)),
     use_coins=not re.search(_NO_COINS, lowered),
-    words=words - _FILLER,
+    words=words - _FILLER - set(re.findall(r"\d+", lowered)),
+    when=when,
+    hour_given=hour_given,
   )
+
+
+def openings(listed: dict[str, Any], days: int = 3, per_day: int = 4) -> str:
+  """Say the free slots of an availability answer, a few per day."""
+  parts = []
+  for day in listed.get("days") or []:
+    free = [s for s in day["slots"] if s.get("left", 1) > 0]
+    if not free:
+      continue
+    first = datetime.datetime.fromisoformat(free[0]["starts_at"])
+    hours = ", ".join(
+      f"{datetime.datetime.fromisoformat(s['starts_at']):%H:%M}"
+      for s in free[:per_day]
+    )
+    more = f" and {len(free) - per_day} more" if len(free) > per_day else ""
+    parts.append(f"{first:%a %-d %b}: {hours}{more}")
+    if len(parts) == days:
+      break
+  return "; ".join(parts)
+
+
+def slot_at(listed: dict[str, Any], when: datetime.datetime) -> dict | None:
+  """Return the free slot that starts at a local wall-clock time."""
+  for day in listed.get("days") or []:
+    for slot in day["slots"]:
+      starts = datetime.datetime.fromisoformat(slot["starts_at"]).replace(
+        tzinfo=None
+      )
+      if starts == when and slot.get("left", 1) > 0:
+        return slot
+  return None
 
 
 @dataclasses.dataclass
@@ -341,11 +477,25 @@ class ScriptedBrain:
   name = "Scripted stand-in"
   is_model = False
 
+  def __init__(self, now: Callable[[], datetime.datetime] | None = None):
+    """`now` is what the clock says; the tests fix it."""
+    self.now = now or datetime.datetime.now
+
   async def step(self, turns: list[dict[str, Any]], tools: list[Tool]) -> Step:
     """Return the next step of the fixed routine."""
     del tools  # The script knows the tools by name.
+    now = self.now()
     asked = max(i for i, turn in enumerate(turns) if turn["role"] == "person")
-    ask = parse(turns[asked]["text"])
+    ask = parse(turns[asked]["text"], now)
+    if not ask.understood and ask.when is not None:
+      # "Saturday at 11": the answer to the question of when. The request
+      # it answers is the person's words before it.
+      earlier = [
+        i for i, turn in enumerate(turns[:asked]) if turn["role"] == "person"
+      ]
+      if earlier:
+        ask, answer = parse(turns[earlier[-1]]["text"], now), ask
+        ask.when, ask.hour_given = answer.when, answer.hour_given
     # The person's rules fill in what the request didn't say.
     memory = next((t["memory"] for t in turns if t["role"] == "memory"), {})
     rules = memory.get("rules", {})
@@ -385,6 +535,52 @@ class ScriptedBrain:
           return Step(text=say("nothing_like_it", lang) + say("help", lang))
         return Step(text=self._nothing(found, choice, lang))
       deal, option = choice.deal, choice.option
+      starts_at = None
+      if (deal.get("booking") or {}).get("required"):
+        # Booked for a date and time when bought: the person has to name
+        # them, and the shop has to have the slot free.
+        if "check_availability" not in results:
+          call = {"shop": deal["shop"], "deal_id": deal["deal_id"]}
+          if ask.when is not None:
+            call["from_day"] = ask.when.date().isoformat()
+            call["days"] = 1
+          else:
+            call["days"] = 7
+          return Step(calls=[Call("check_availability", call)])
+        listed = results["check_availability"]
+        if listed.get("error"):
+          return Step(
+            text=say("shop_refused", lang, message=listed["message"])
+          )
+        free = openings(listed)
+        if ask.when is None or not ask.hour_given:
+          if not free:
+            return Step(
+              text=say(
+                "no_openings", lang, title=deal["title"], shop=deal["shop_name"]
+              )
+            )
+          return Step(
+            text=say(
+              "ask_when",
+              lang,
+              title=deal["title"],
+              shop=deal["shop_name"],
+              openings=free,
+            )
+          )
+        slot = slot_at(listed, ask.when)
+        if not slot:
+          return Step(
+            text=say(
+              "no_such_slot",
+              lang,
+              title=deal["title"],
+              day=f"{ask.when:%a %-d %b}",
+              openings=free or "nothing free",
+            )
+          )
+        starts_at = slot["starts_at"]
       balance = _balance(wallets, deal["shop"]) if ask.use_coins else 0
       proposal = {
         "shop": deal["shop"],
@@ -397,6 +593,8 @@ class ScriptedBrain:
       }
       if deal.get("promo"):
         proposal["promo_code"] = deal["promo"]["code"]
+      if starts_at:
+        proposal["starts_at"] = starts_at
       return Step(calls=[Call("propose_purchase", proposal)])
 
     proposed = results["propose_purchase"]
@@ -407,6 +605,18 @@ class ScriptedBrain:
     paying = say("card_pays", lang, total=money(proposed["total"]))
     if not proposed["total"]:
       paying = say("coins_cover", lang)
+    booking = proposed.get("booking") or {}
+    if booking.get("starts_at"):
+      return Step(
+        text=say(
+          "proposal_booked",
+          lang,
+          title=proposed["title"],
+          shop=proposed["shop_name"],
+          when=moment(booking["starts_at"]),
+          paying=paying,
+        )
+      )
     return Step(
       text=say(
         "proposal",

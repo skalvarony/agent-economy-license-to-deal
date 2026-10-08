@@ -66,11 +66,30 @@ def search(shop, **body):
   return call(shop, "POST", "/catalog/search", body)[1].get("products", [])
 
 
-def open_checkout(shop, deal_id):
-  return call(shop, "POST", "/checkout-sessions", {
+def open_checkout(shop, deal_id, starts_at=None):
+  """Open a checkout for one option; `starts_at` books its slot."""
+  body = {
     "line_items": [{"item": {"id": deal_id}, "quantity": 1}],
     "buyer": {"email": "shopper@example.com", "full_name": "Demo Shopper"},
-  })
+  }
+  if starts_at:
+    body["bookings"] = {deal_id: starts_at}
+  return call(shop, "POST", "/checkout-sessions", body)
+
+
+def first_slot(shop, deal_id):
+  """The first open slot of a deal, from the shop's calendar."""
+  _, listed = call(shop, "GET", f"/deals/{deal_id}/availability?days=14")
+  return next((s for d in listed["days"] for s in d["slots"] if s["left"]),
+              None), listed
+
+
+def left_at(shop, deal_id, starts_at):
+  """How many places a slot has left, as the shop lists it now."""
+  _, listed = call(shop, "GET",
+                   f"/deals/{deal_id}/availability?from={starts_at[:10]}&days=1")
+  return next(s["left"] for d in listed["days"] for s in d["slots"]
+              if s["starts_at"] == starts_at)
 
 
 def pool(shop, option_id):
@@ -119,12 +138,30 @@ def main():
   check("shop a: the 3-hour option has a pool of 50 codes",
         before["total"] == 50, before)
 
-  # Buy the 3-hour spa day in shop A.
-  _, checkout = open_checkout("a", "spa_day_two_3h")
+  # The spa day is booked for a date and time: the shop lists its slots.
+  slot, listed = first_slot("a", "spa_day_two")
+  check("shop a: the spa day lists bookable slots with places left",
+        slot is not None and listed["slot_minutes"] == 60
+        and spa["service"]["booking"]["required"] is True, listed)
+  places = left_at("a", "spa_day_two", slot["starts_at"])
+
+  # Without a slot the shop takes no payment.
+  _, unbooked = open_checkout("a", "spa_day_two_3h")
+  status, refused = call(
+    "a", "POST", f"/checkout-sessions/{unbooked['id']}/complete", PAYMENT)
+  check("shop a: a purchase without a slot is refused before any charge",
+        status == 400 and refused["messages"][0]["code"] == "BOOKING_REQUIRED",
+        refused)
+
+  # Buy the 3-hour spa day in shop A, for that slot.
+  _, checkout = open_checkout("a", "spa_day_two_3h", slot["starts_at"])
   check("shop a: checkout shows the option, the terms and $99",
         total(checkout) == 9900
         and checkout["line_items"][0]["service"]["option"] == "3 hours",
         checkout)
+  check("shop a: the checkout carries the slot",
+        checkout["line_items"][0]["service"]["booking"]["starts_at"]
+        == slot["starts_at"], checkout["line_items"][0]["service"])
   status, done = call(
     "a", "POST", f"/checkout-sessions/{checkout['id']}/complete", PAYMENT)
   check("shop a: purchase completes without shipping", status == 200, done)
@@ -134,6 +171,11 @@ def main():
   check("shop a: voucher issued and payment captured",
         line["voucher"]["status"] == "issued"
         and order["payment"]["status"] == "captured", order)
+  check("shop a: the order is booked for the slot, and the slot has one"
+        " place less",
+        line["service"]["booking"]["status"] == "booked"
+        and left_at("a", "spa_day_two", slot["starts_at"]) == places - 1,
+        line["service"].get("booking"))
   sold = pool("a", "spa_day_two_3h")
   check("shop a: the voucher's code came out of the option's pool",
         len(line["voucher"]["codes"]) == 1
@@ -158,6 +200,8 @@ def main():
   check("shop a: the refunded code is void, not back on sale",
         voided["void"] == sold["void"] + 1
         and voided["available"] == sold["available"], voided)
+  check("shop a: the refund gives the slot's place back",
+        left_at("a", "spa_day_two", slot["starts_at"]) == places, places)
 
   # Surprise fee: added after the checkout was shown, so nothing is charged.
   _, checkout = open_checkout("a", "spa_day_two_3h")

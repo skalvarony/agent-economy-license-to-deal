@@ -32,6 +32,7 @@ from exceptions import OutOfStockError
 from exceptions import PurchaseLimitError
 from exceptions import ResourceNotFoundError
 from exceptions import VoucherStateError
+from services import booking_service
 from services import coin_service
 from services import ledger
 from services.payment_rail import PaymentRail
@@ -64,6 +65,10 @@ def terms(deal: db.Deal, option: db.DealOption | None = None) -> dict[str, Any]:
   if option:
     service["option"] = option.title
     service["includes"] = option.includes or []
+  if booking := booking_service.summary(deal):
+    # Booked for a date and time when bought; the slot is added on the
+    # checkout and the order (services/booking_service.py).
+    service["booking"] = booking
   return {
     "service": service,
     "cancellation": present(
@@ -219,6 +224,13 @@ async def issue_vouchers(
   return issued
 
 
+def _release_slot(line: dict[str, Any]) -> None:
+  """Mark a line's booking as released, if it had one."""
+  booking = (line.get("service") or {}).get("booking")
+  if booking and booking.get("starts_at"):
+    booking["status"] = "released"
+
+
 class VoucherService:
   """Merchant and refund actions on the vouchers of a placed order."""
 
@@ -233,6 +245,8 @@ class VoucherService:
     self._require(lines, "cancel", {"unredeemed", "redemption_failed"})
     for line in lines:
       line["redemption"]["status"] = "cancelled_by_merchant"
+      _release_slot(line)
+    await booking_service.release(self.transactions_session, order_id)
     await self._save(order, "MERCHANT_CANCELLED")
     return order
 
@@ -280,6 +294,8 @@ class VoucherService:
     payment["status"] = "refunded"
     for line in lines:
       line["voucher"]["status"] = "refunded"
+      _release_slot(line)
+    await booking_service.release(self.transactions_session, order_id)
     await db.set_order_codes_status(self.transactions_session, order_id, "void")
     await db.mark_purchases_refunded(self.transactions_session, order_id)
     detail = {

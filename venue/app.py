@@ -160,6 +160,7 @@ def _purchase(order: dict[str, Any]) -> dict[str, Any] | None:
     "redemption_method": redemption.get("method"),
     "instructions": redemption.get("instructions"),
     "window": service.get("window") or {},
+    "booking": service.get("booking") or {},
     "cancellation": line.get("cancellation") or {},
     "payment": payment.get("status"),
     "paid": payment.get("amount", 0),

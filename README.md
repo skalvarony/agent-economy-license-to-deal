@@ -24,12 +24,12 @@ scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
 scripts/agent.sh start       # http://localhost:8190
 scripts/console.sh start     # http://localhost:8195
 scripts/venue.sh start       # http://localhost:8196
-python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking fee
+python3 scripts/smoke.py     # 26 live checks: buys, books, cancels, refunds, booking fee
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
-Tests: `cd rest/python/server && uv run pytest` (340), `cd agent && uv run
-pytest` (40), `cd console && uv run pytest` (16), `cd venue && uv run pytest`
+Tests: `cd rest/python/server && uv run pytest` (347), `cd agent && uv run
+pytest` (46), `cd console && uv run pytest` (16), `cd venue && uv run pytest`
 (5). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
 running): `npm install && npx playwright install chromium` once, then
 `npm test` (five shop flows) and `npm run test:agent` (three agent flows).
@@ -51,6 +51,20 @@ Deals carry rules as data, not text: dated (a set day) or open-dated
 with a repurchase period (kept by email), appointment required, and one promo
 code per shop (`DUSK10`, `PRAHA15`, `DAWN5`).
 
+**Booked for a date and time.** Every deal is booked when bought: its
+catalogue row says on which days and hours it takes bookings, how far apart
+its start times are, how many places each start time has and how far ahead
+it can be booked (`slot_days`, `slot_hours`, `slot_minutes`,
+`slot_capacity`, `booking_days_ahead` in `deals.csv`; times in the shop's
+`timezone`). The shop lists its open slots with the places left at
+`GET /deals/{id}/availability`; the web checkout offers them and an agent
+sends the chosen one with the checkout (`bookings: {"<option>": "<start>"}`).
+A slot the deal doesn't offer, a past one or a full one is refused before
+anything is charged (`409 SLOT_UNAVAILABLE`), and so is paying without one
+(`400 BOOKING_REQUIRED`). The order keeps the slot under `service.booking`;
+a refund or the merchant's cancellation gives the place back
+(`services/booking_service.py`).
+
 **Coins.** Each shop has its own, worth $1 there, in a wallet per customer.
 A card payment earns the shop's percentage back. A checkout can be paid with
 coins, a card or both; it shows the exact split, and a refund returns each
@@ -67,7 +81,8 @@ Both end in the same checkout code, order, voucher, payment and ledger events.
 |---|---|
 | `GET /.well-known/ucp` | Capabilities, endpoint, keys |
 | `POST /catalog/search`, `/catalog/lookup` | Deals by text, category and price; options are variants |
-| `POST /checkout-sessions` | Open a checkout; line items carry the voucher terms |
+| `GET /deals/{id}/availability` | The deal's open slots by day, with the places left in each |
+| `POST /checkout-sessions` | Open a checkout; line items carry the voucher terms; `bookings` names the slot |
 | `POST /checkout-sessions/{id}/complete` | Pay; the order comes back with the voucher |
 | `GET /orders/{id}` | The order: only for the agent that placed it, or the shop |
 | `GET /wallet?email=` | The buyer's coins here and the shop's percentage back |
@@ -118,10 +133,13 @@ searches the three shops, reads the person's coins in each, and proposes one
 deal: what, why, what it turned down and why, and the exact total with the
 coins/card split. Each turn shows the signed requests it sent.
 
-1. The brain (`agent/brain.py`) has three tools, `search_deals`,
-   `read_wallets` and `propose_purchase`. None of them pays.
-2. `propose_purchase` opens a checkout in the shop; the page shows it with the
-   total the shop will charge.
+1. The brain (`agent/brain.py`) has four tools, `search_deals`,
+   `read_wallets`, `check_availability` and `propose_purchase`. None of
+   them pays. A deal is booked for a date and time: the brain asks for them
+   when the person gave none ("Saturday at 11:00", "mañana a las 18"), reads
+   the shop's open slots and proposes with the slot's `starts_at`.
+2. `propose_purchase` opens a checkout in the shop, booked for that slot; the
+   page shows it with the total the shop will charge.
 3. The person's approval is handled by code outside the brain
    (`agent/session.py`): it pays that checkout, once. A `409` from the shop
    stops it; the agent fetches the new total and asks again.
@@ -251,12 +269,13 @@ the merchant; the agent's decisions until a model is connected.
   samples` at `01755bc`; the repository's second commit is the unmodified
   copy). Added under `server/`: `services/voucher_service.py`,
   `payment_rail.py`, `ledger.py`, `account_service.py`, `coin_service.py`,
-  `visitor.py`; `routes/catalog.py`, `storefront.py`, `web_checkout.py`,
+  `booking_service.py`, `visitor.py`; `routes/catalog.py`, `storefront.py`, `web_checkout.py`,
   `account.py`, `voucher.py`, `wallet.py` with `routes/assets/`;
   `approval_checks.py` (stub for the buyer-approval checks); `voucher_test.py`.
 - `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
-  `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
-  look, `images/` (credits in `shops/CREDITS.md`).
+  `codes`, `discounts`, `reviews`, `users`, `wallets`; each deal's booking
+  calendar in `deals.csv`), `shop.json` for its look and timezone, `images/`
+  (credits in `shops/CREDITS.md`).
 - `agent/`: `app.py` (web app), `session.py` (conversation, tools, approval,
   evidence), `brain.py` and `model_brain.py`, `shops.py` (UCP calls),
   `signing.py`, `static/`.

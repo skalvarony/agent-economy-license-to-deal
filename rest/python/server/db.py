@@ -175,6 +175,15 @@ class Deal(ProductBase):
   # (never again when unset).
   limit_per_person = Column(Integer, nullable=True)
   repurchase_days = Column(Integer, nullable=True)
+  # When it can be booked, for deals booked at purchase: days of the week
+  # ('mon,tue,…', all when empty), hours ('10:00-17:00'; several ranges with
+  # ';'), minutes between start times, units each start time takes, and how
+  # many days ahead. Unset `slot_hours`: no booking, any day.
+  slot_days = Column(String, nullable=True)
+  slot_hours = Column(String, nullable=True)
+  slot_minutes = Column(Integer, nullable=True)
+  slot_capacity = Column(Integer, nullable=True)
+  booking_days_ahead = Column(Integer, nullable=True)
   highlights = Column(JSON, nullable=True)  # Short selling points, as a list
   about_merchant = Column(String, nullable=True)
   # What shoppers see next to the deal. Simulated, like the rest of it.
@@ -366,6 +375,27 @@ class DealPurchase(TransactionBase):
   quantity = Column(Integer)
   purchased_at = Column(String)  # ISO 8601, UTC
   refunded = Column(Boolean, default=False)
+
+
+class Booking(TransactionBase):
+  """A slot an order took: the date and time the service is booked for.
+
+  Capacity is counted in units at a start time, over the bookings that are
+  'booked'. A refund or the merchant's cancellation releases them.
+  """
+
+  __tablename__ = "bookings"
+
+  id = Column(Integer, primary_key=True, autoincrement=True)
+  order_id = Column(String, index=True)
+  line_id = Column(String, nullable=True)
+  deal_id = Column(String, index=True)
+  product_id = Column(String)
+  buyer_email = Column(String, nullable=True)
+  starts_at = Column(String, index=True)  # ISO 8601 with offset
+  ends_at = Column(String)
+  units = Column(Integer)
+  status = Column(String, default="booked", index=True)  # booked | released
 
 
 class User(TransactionBase):
@@ -605,6 +635,46 @@ async def mark_purchases_refunded(session: AsyncSession, order_id: str) -> None:
     update(DealPurchase)
     .where(DealPurchase.order_id == order_id)
     .values(refunded=True)
+  )
+
+
+async def booked_units(
+  session: AsyncSession, deal_id: str, starts: list[str]
+) -> dict[str, int]:
+  """Return the units booked at each of the given start times of a deal."""
+  if not starts:
+    return {}
+  result = await session.execute(
+    select(Booking.starts_at, func.sum(Booking.units))
+    .where(Booking.deal_id == deal_id)
+    .where(Booking.status == "booked")
+    .where(Booking.starts_at.in_(starts))
+    .group_by(Booking.starts_at)
+  )
+  return {starts_at: int(units) for starts_at, units in result.all()}
+
+
+async def add_booking(session: AsyncSession, **fields: Any) -> Booking:
+  """Record the slot an order took."""
+  booking = Booking(status="booked", **fields)
+  session.add(booking)
+  return booking
+
+
+async def list_bookings(session: AsyncSession, order_id: str) -> list[Booking]:
+  """Return an order's bookings."""
+  result = await session.execute(
+    select(Booking).where(Booking.order_id == order_id)
+  )
+  return list(result.scalars().all())
+
+
+async def release_bookings(session: AsyncSession, order_id: str) -> None:
+  """Give an order's slots back, so others can book them."""
+  await session.execute(
+    update(Booking)
+    .where(Booking.order_id == order_id)
+    .values(status="released")
   )
 
 

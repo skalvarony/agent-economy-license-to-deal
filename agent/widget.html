@@ -68,7 +68,8 @@ button:disabled { opacity: .5; cursor: default; }
     const open = data.status === "waiting_for_the_customer";
     const s = data.service || {};
     const rows = [];
-    if (s.window && s.window.not_before) rows.push(["When", `${when(s.window.not_before)} → ${when(s.window.not_after)}`]);
+    if (s.booking && s.booking.starts_at) rows.push(["When", when(s.booking.starts_at)]);
+    else if (s.window && s.window.not_before) rows.push(["When", `${when(s.window.not_before)} → ${when(s.window.not_after)}`]);
     if (s.merchant) rows.push(["Where", `${s.merchant}${s.location ? " · " + s.location : ""}`]);
     const r = refund(data.cancellation);
     if (r) rows.push(["Cancellation", r]);

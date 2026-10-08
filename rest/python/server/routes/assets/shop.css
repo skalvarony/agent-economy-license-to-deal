@@ -329,6 +329,15 @@ button:disabled { opacity: .6; cursor: progress; }
 .agent p { margin: 10px 0; font-size: 0.9375rem; color: var(--muted); }
 .agent pre { margin: 0 0 12px; padding: 12px; white-space: pre-wrap; font: 0.8125rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); }
 .tech { margin: 14px 0 0; font-size: 0.75rem; color: var(--muted); }
+
+/* The date and time of a visit, chosen on the checkout page. */
+.slot { margin: 10px 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.slot .booked, .slot .unbooked { margin: 0 0 8px; font-size: 0.9375rem; }
+.slot .unbooked { color: var(--accent-ink); font-weight: 600; }
+.slot label { display: block; font-size: 0.8125rem; color: var(--muted); }
+.slot select { margin: 4px 0 8px; }
+.slot button { padding: 8px 14px; border-radius: 999px; }
+.slot .tech { margin-top: 8px; }
 .tech code { font-size: 0.75rem; }
 
 /* ---- Forms */

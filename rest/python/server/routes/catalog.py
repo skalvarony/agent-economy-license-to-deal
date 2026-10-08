@@ -9,6 +9,7 @@ see the same catalog in the storefront (routes/storefront.py).
 
 import dataclasses
 import json
+import datetime
 import pathlib
 import re
 from typing import Annotated, Any
@@ -16,11 +17,15 @@ from typing import Annotated, Any
 import config
 import db
 import dependencies
+from exceptions import InvalidRequestError
+from exceptions import ResourceNotFoundError
 from fastapi import APIRouter
 from fastapi import Body
+from fastapi import Query
 from fastapi import Depends
 from fastapi import Request
 from fastapi.responses import PlainTextResponse
+from services import booking_service
 from services import coin_service
 from services import voucher_service
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -391,6 +396,39 @@ async def lookup_catalog(
       products.append(catalog_lookup.Product(**{**body, "variants": asked}))
   return catalog_lookup.LookupResponse(
     ucp=_ucp(LOOKUP_CAPABILITY), products=products
+  )
+
+
+@router.get("/deals/{deal_id}/availability", include_in_schema=False)
+async def deal_availability(
+  deal_id: str,
+  products_session: Annotated[
+    AsyncSession, Depends(dependencies.get_products_db)
+  ],
+  transactions_session: Annotated[
+    AsyncSession, Depends(dependencies.get_transactions_db)
+  ],
+  start: Annotated[str | None, Query(alias="from")] = None,
+  days: Annotated[int, Query(ge=1, le=booking_service.MAX_DAYS)] = 7,
+) -> dict[str, Any]:
+  """List a deal's open slots from a day on, with the places left in each.
+
+  Open to anyone, like the catalog: an agent reads it before proposing a
+  time, and the shop's own checkout page reads it to offer the choice.
+  """
+  deal = await db.get_deal(products_session, deal_id)
+  if not deal:
+    raise ResourceNotFoundError(f"Deal {deal_id} not found")
+  if not booking_service.required(deal):
+    return {"deal_id": deal_id, "required": False, "days": []}
+  begin = None
+  if start:
+    try:
+      begin = datetime.date.fromisoformat(start)
+    except ValueError as e:
+      raise InvalidRequestError(f"from must be a day (YYYY-MM-DD): {start!r}") from e
+  return await booking_service.availability(
+    transactions_session, deal, begin, days
   )
 
 

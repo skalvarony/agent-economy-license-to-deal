@@ -105,12 +105,23 @@
     return full;
   }
 
+  // The slot a purchase is booked for, e.g. "Sat 10 Oct, 11:00 to 12:00".
+  function bookedText(booking) {
+    const end = booking.ends_at ? ` to ${timeOnly.format(new Date(booking.ends_at))}` : "";
+    return `${moment(booking.starts_at)}${end}${booking.status === "released" ? " (released)" : ""}`;
+  }
+
   function terms(deal) {
     const { service = {}, cancellation = {}, voucher = {}, redemption = {} } = deal;
     const rows = [];
     const window = service.window;
-    if (window) {
+    const booking = service.booking;
+    if (booking?.starts_at) {
+      rows.push(["When", bookedText(booking)]);
+    } else if (window) {
       rows.push(["When", `${moment(window.not_before)} to ${timeOnly.format(new Date(window.not_after))}`]);
+    } else if (booking?.required) {
+      rows.push(["When", "A date and time you pick when buying"]);
     } else {
       rows.push(["When", redemption.appointment_required ? "You book the date after buying" : "Any day while the voucher is valid"]);
     }
@@ -186,7 +197,8 @@
   function leadTerms(proposal) {
     const { service = {}, cancellation = {} } = proposal;
     const rows = [];
-    if (service.window) rows.push(["When", `${moment(service.window.not_before)} to ${timeOnly.format(new Date(service.window.not_after))}`]);
+    if (service.booking?.starts_at) rows.push(["When", bookedText(service.booking)]);
+    else if (service.window) rows.push(["When", `${moment(service.window.not_before)} to ${timeOnly.format(new Date(service.window.not_after))}`]);
     rows.push(["Cancellation", refundText(cancellation)]);
     if (service.merchant) rows.push(["Where", [service.merchant, service.location].filter(Boolean).join(", ")]);
     return el("dl", { class: "lead-terms" }, rows.map(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })]));
@@ -936,6 +948,8 @@
   }
   // The one line the row needs under the title: what matters next.
   function nextStep(p, state) {
+    const b = p.service?.booking;
+    if (state === "ready" && b?.starts_at) return `Booked for ${dayShort(b.starts_at)} ${timeOf(b.starts_at)}, ${relative(b.starts_at)}`;
     const w = p.service?.window;
     if (state === "ready" && w?.not_before) return `${new Date(w.not_before) > Date.now() ? "Happens" : "Started"} ${relative(w.not_before)}, ${dayShort(w.not_before)}`;
     if (state === "ready" && p.redemption_terms?.appointment_required) return "Book first" + (p.redemption_terms.booking_contact ? `: ${p.redemption_terms.booking_contact}` : "");
@@ -1040,7 +1054,8 @@
     const timeline = [
       approved && { at: approved.at, text: "Approved", extra: channelBadge(approved.method) },
       { at: p.at, text: "Bought and the voucher issued", extra: p.rail ? `${p.rail === "stripe" ? "Stripe" : "mock rail"}${p.payment_id ? " · " + p.payment_id : ""}` : null },
-      p.service?.window?.not_before && { at: p.service.window.not_before, text: "The service", extra: windowText(p.service.window), future: new Date(p.service.window.not_before) > Date.now() },
+      p.service?.booking?.starts_at && { at: p.service.booking.starts_at, text: "Your visit", extra: bookedText(p.service.booking), future: new Date(p.service.booking.starts_at) > Date.now() },
+      !p.service?.booking?.starts_at && p.service?.window?.not_before && { at: p.service.window.not_before, text: "The service", extra: windowText(p.service.window), future: new Date(p.service.window.not_before) > Date.now() },
       terms.expires_at && state === "ready" && { at: terms.expires_at, text: "Promotional value expires", future: new Date(terms.expires_at) > Date.now() },
       state === "used" && { text: "Used at the venue", extra: "recorded by the merchant" },
       state === "cancelled" && { text: "Cancelled by the venue" },

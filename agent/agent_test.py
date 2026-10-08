@@ -7,6 +7,7 @@ and the browser tests cover the real shops.
 
 import asyncio
 import copy
+import datetime
 import json
 
 from brain import Call, ScriptedBrain, Step, choose, money, parse
@@ -26,13 +27,18 @@ SETTINGS = {
 }
 
 
-def product(deal_id, title, prices, refundability="refundable", sold_out=()):
+def product(
+  deal_id, title, prices, refundability="refundable", sold_out=(), booking=None
+):
   """Build a catalog product the way a shop returns it."""
+  service = {"category": "wellness", "merchant": "A venue"}
+  if booking:
+    service["booking"] = booking
   return {
     "id": deal_id,
     "title": title,
     "description": {"plain": title},
-    "service": {"category": "wellness", "merchant": "A venue"},
+    "service": service,
     "cancellation": {"refundability": refundability},
     "rating": {"value": 4.5, "count": 10},
     "variants": [
@@ -62,6 +68,9 @@ class FakeShop:
     self.completed = []
     self.told = []  # the agent_context of each completed checkout
     self.on_call = lambda call: None
+    self.booked = {}  # starts_at -> units taken, over completed checkouts
+    self.full = set()  # starts_at the shop reports as full
+    self.bookings = []  # (checkout id, starts_at) of each booking made
 
   def for_people(self, url):
     return url
@@ -74,6 +83,54 @@ class FakeShop:
       "balance": self.balance,
       "coin_value": {"amount": 100, "currency": "USD"},
       "back_percent": 10,
+    }
+
+  def _calendar(self, item_id):
+    """The booking calendar of the deal an option belongs to, if any."""
+    deal = next(
+      (p for p in self.products for v in p["variants"] if v["id"] == item_id),
+      {},
+    )
+    return (deal.get("service") or {}).get("booking")
+
+  def _service(self, stored, status=None):
+    """A line's `service`, with the slot when the deal is booked."""
+    calendar = self._calendar(stored["item"])
+    if not calendar:
+      return {}
+    booking = dict(calendar)
+    if stored.get("starts_at"):
+      starts = stored["starts_at"]
+      booking["starts_at"] = starts
+      booking["ends_at"] = starts[:11] + f"{int(starts[11:13]) + 1:02d}" + starts[13:]
+      if status:
+        booking["status"] = status
+    return {"booking": booking}
+
+  async def availability(self, deal_id, start=None, days=7):
+    """Every evening from `start`: 17:00 to 21:00, two places an hour."""
+    first = datetime.date.fromisoformat(start) if start else NOW.date()
+    listed = []
+    for n in range(days):
+      day = first + datetime.timedelta(days=n)
+      slots = []
+      for hour in range(17, 22):
+        starts = f"{day.isoformat()}T{hour:02d}:00:00+02:00"
+        taken = 2 if starts in self.full else self.booked.get(starts, 0)
+        slots.append(
+          {
+            "starts_at": starts,
+            "ends_at": f"{day.isoformat()}T{hour + 1:02d}:00:00+02:00",
+            "left": max(0, 2 - taken),
+          }
+        )
+      listed.append({"date": day.isoformat(), "slots": slots})
+    return {
+      "deal_id": deal_id,
+      "timezone": "Europe/Prague",
+      "slot_minutes": 60,
+      "capacity_per_slot": 2,
+      "days": listed,
     }
 
   def _checkout(self, checkout_id):
@@ -92,23 +149,29 @@ class FakeShop:
         {
           "item": {"id": stored["item"], "title": stored["title"]},
           "quantity": 1,
+          "service": self._service(stored),
         }
       ],
       "totals": totals,
       "coins": {"applied": stored["coins"]} if stored["coins"] else {},
     }
 
-  async def open_checkout(self, item_id, quantity, buyer, coins=0, promo=None):
+  async def open_checkout(
+    self, item_id, quantity, buyer, coins=0, promo=None, starts_at=None
+  ):
     variants = [v for p in self.products for v in p["variants"]]
     variant = next((v for v in variants if v["id"] == item_id), None)
     if not variant or not variant["availability"]["available"]:
       raise ShopError(400, "OUT_OF_STOCK", "Insufficient stock.")
+    if starts_at and starts_at in self.full:
+      raise ShopError(409, "SLOT_UNAVAILABLE", f"Full at {starts_at}.")
     checkout_id = f"co_{len(self.checkouts) + 1}"
     self.checkouts[checkout_id] = {
       "item": item_id,
       "title": variant["title"],
       "price": variant["price"]["amount"],
       "coins": min(coins, self.balance),
+      "starts_at": starts_at,
     }
     shown = self._checkout(checkout_id)
     self.checkouts[checkout_id]["seen"] = shown["totals"][-1]["amount"]
@@ -124,6 +187,16 @@ class FakeShop:
     now = self._checkout(checkout_id)["totals"][-1]["amount"]
     if now != self.checkouts[checkout_id]["seen"]:
       raise ShopError(409, "requires_consent", "The total changed.")
+    stored = self.checkouts[checkout_id]
+    if self._calendar(stored["item"]):
+      if not stored.get("starts_at"):
+        raise ShopError(400, "BOOKING_REQUIRED", "Choose a slot first.")
+      if stored["starts_at"] in self.full:
+        raise ShopError(
+          409, "SLOT_UNAVAILABLE", f"Full at {stored['starts_at']}."
+        )
+      self.booked[stored["starts_at"]] = self.booked.get(stored["starts_at"], 0) + 1
+      self.bookings.append((checkout_id, stored["starts_at"]))
     self.completed.append((checkout_id, now))
     self.told.append(context)
     return {"order": {"id": f"order_{checkout_id}"}}
@@ -146,6 +219,7 @@ class FakeShop:
           "item": {"id": stored["item"], "title": stored["title"]},
           "voucher": {"codes": ["TST-0001"], "status": "issued"},
           "redemption": {"status": "unredeemed"},
+          "service": self._service(stored, status="booked"),
         }
       ],
       "payment": {"amount": charged, "coins": stored["coins"], "rail": "mock"},
@@ -154,7 +228,24 @@ class FakeShop:
 
 SPA = product("spa", "Spa Day for Two", {"2h": 6900, "3h": 9900, "day": 13900})
 SAVER = product("saver", "Spa Day Saver", {"std": 4900}, "non_refundable")
+# Booked for a date and time when bought: evenings, two cabins an hour.
+SAUNA = product(
+  "sauna",
+  "Private Sauna Evening",
+  {"60min": 5200},
+  booking={
+    "required": True,
+    "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    "hours": "17:00-21:00",
+    "slot_minutes": 60,
+    "capacity_per_slot": 2,
+    "days_ahead": 30,
+    "timezone": "Europe/Prague",
+  },
+)
 REQUEST = "A spa day for two, refundable, under $120"
+# A Thursday evening: what "Saturday" and "tomorrow" count from in the tests.
+NOW = datetime.datetime(2026, 10, 8, 20, 0)
 
 
 def run(events):
@@ -169,7 +260,7 @@ def run(events):
 @pytest.fixture
 def shops():
   return [
-    FakeShop("a", "Shop A", [SPA], balance=40),
+    FakeShop("a", "Shop A", [SPA, SAUNA], balance=40),
     FakeShop("b", "Shop B", []),
     FakeShop("c", "Shop C", [SAVER]),
   ]
@@ -177,7 +268,7 @@ def shops():
 
 @pytest.fixture
 def session(shops, tmp_path):
-  return Session(SETTINGS, shops, ScriptedBrain(), tmp_path)
+  return Session(SETTINGS, shops, ScriptedBrain(now=lambda: NOW), tmp_path)
 
 
 def proposal_of(session):
@@ -199,6 +290,77 @@ def test_parse_keeps_coins_when_asked():
 
 def test_parse_does_not_understand_small_talk():
   assert not parse("can you find me something?").understood
+
+
+def test_parse_reads_a_day_and_an_hour():
+  ask = parse("a sauna for two on Saturday at 11:00", NOW)
+  assert ask.when == datetime.datetime(2026, 10, 10, 11, 0)
+  assert ask.hour_given
+  assert ask.category == "wellness"
+  assert "saturday" not in ask.words and "11" not in ask.words
+  assert parse("tomorrow at 6pm", NOW).when == datetime.datetime(2026, 10, 9, 18)
+  assert parse("el sábado a las 18", NOW).when == datetime.datetime(
+    2026, 10, 10, 18
+  )
+  on_day = parse("a massage on 12 October", NOW)
+  assert on_day.when == datetime.datetime(2026, 10, 12) and not on_day.hour_given
+  # Nine tonight has passed at 20:00: it means tomorrow.
+  assert parse("a beer at 9", NOW).when == datetime.datetime(2026, 10, 9, 9)
+  assert parse("a spa day under $120", NOW).when is None
+  # Only a time: nothing to search for, but an answer to "when?".
+  only_when = parse("Saturday at 18:00", NOW)
+  assert not only_when.understood and only_when.hour_given
+
+
+def test_a_bookable_deal_asks_when_and_then_proposes_the_slot(session, shops):
+  events = run(session.say("a private sauna evening for two, refundable"))
+  assert not [p for p in session.proposals.values() if p["status"] == "pending"]
+  assert "When would you like to go?" in events[-1]["text"]
+  assert "Thu 8 Oct: 17:00, 18:00, 19:00, 20:00 and 1 more" in events[-1]["text"]
+  # The answer is only a time: it completes the request before it.
+  events = run(session.say("Saturday at 18:00"))
+  proposal = proposal_of(session)
+  assert proposal["title"] == "Private Sauna Evening · 60min"
+  booking = proposal["service"]["booking"]
+  assert booking["starts_at"] == "2026-10-10T18:00:00+02:00"
+  assert booking["ends_at"] == "2026-10-10T19:00:00+02:00"
+  assert "booked for Sat 10 Oct, 18:00" in events[-1]["text"]
+  assert not shops[0].completed
+  events = run(session.approve(proposal["id"]))
+  assert shops[0].bookings == [(proposal["checkout_id"], "2026-10-10T18:00:00+02:00")]
+  receipt = next(e["receipt"] for e in events if e["type"] == "receipt")
+  assert receipt["service"]["booking"]["status"] == "booked"
+
+
+def test_a_request_with_a_time_proposes_at_once(session, shops):
+  events = run(session.say("a sauna evening for two, Saturday at 18:00"))
+  booking = proposal_of(session)["service"]["booking"]
+  assert booking["starts_at"] == "2026-10-10T18:00:00+02:00"
+  assert shops[0].checkouts["co_1"]["starts_at"] == "2026-10-10T18:00:00+02:00"
+  assert "booked for Sat 10 Oct, 18:00" in events[-1]["text"]
+
+
+def test_a_time_the_shop_has_no_slot_for_gets_its_openings(session, shops):
+  events = run(session.say("a sauna evening Saturday at 23:00"))
+  assert "no free slot at that time on Sat 10 Oct" in events[-1]["text"]
+  assert "Sat 10 Oct: 17:00, 18:00" in events[-1]["text"]
+  assert not [p for p in session.proposals.values() if p["status"] == "pending"]
+
+
+def test_a_slot_that_fills_up_before_the_yes_stops_the_purchase(session, shops):
+  run(session.say("a sauna evening Saturday at 18:00"))
+  proposal = proposal_of(session)
+  shops[0].full.add("2026-10-10T18:00:00+02:00")
+  events = run(session.approve(proposal["id"]))
+  assert not shops[0].completed
+  assert proposal["status"] == "failed"
+  assert "that time has just filled up" in events[-1]["text"]
+
+
+def test_a_bookable_deal_is_not_proposed_without_a_slot(session, shops):
+  answer = asyncio.run(session.propose_purchase("a", "sauna_60min"))
+  assert answer["error"] == "booking_required"
+  assert not shops[0].checkouts
 
 
 def test_money():
@@ -385,6 +547,7 @@ def test_the_brain_has_no_way_to_pay(session):
   assert {tool.name for tool in session.tools} == {
     "search_deals",
     "read_wallets",
+    "check_availability",
     "recall",
     "remember",
     "propose_purchase",
@@ -475,6 +638,7 @@ def test_model_proposes_through_the_tools_and_does_not_buy(shops, tmp_path):
   assert [tool["function"]["name"] for tool in first["tools"]] == [
     "search_deals",
     "read_wallets",
+    "check_availability",
     "recall",
     "remember",
     "propose_purchase",
@@ -693,6 +857,7 @@ def test_mcp_lists_the_tools_and_runs_them(session, shops, tmp_path):
   assert names == [
     "search_deals",
     "read_wallets",
+    "check_availability",
     "recall",
     "remember",
     "propose_purchase",

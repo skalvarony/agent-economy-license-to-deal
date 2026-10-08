@@ -37,6 +37,38 @@ TEXTS: dict[str, dict[str, str]] = {
     "en": "I'd buy {title} at {shop}. {paying}. I won't pay until you approve.",
     "es": "Compraría {title} en {shop}. {paying}. No pago hasta que apruebes.",
   },
+  "proposal_booked": {
+    "en": "I'd buy {title} at {shop}, booked for {when}. {paying}. I won't"
+    " pay until you approve.",
+    "es": "Compraría {title} en {shop}, reservado para el {when}. {paying}."
+    " No pago hasta que apruebes.",
+  },
+  "ask_when": {
+    "en": "{title} at {shop} fits, and it's booked for a date and time. When"
+    " would you like to go? Next openings: {openings}. Tell me a day and an"
+    " hour, for example: Saturday at 11:00.",
+    "es": "{title} en {shop} encaja, y se reserva con día y hora. ¿Cuándo"
+    " quieres ir? Próximos huecos: {openings}. Dime un día y una hora, por"
+    " ejemplo: el sábado a las 11:00.",
+  },
+  "no_such_slot": {
+    "en": "{title} has no free slot at that time on {day}. That day it has:"
+    " {openings}. Pick one of those, or another day.",
+    "es": "{title} no tiene hueco libre a esa hora el {day}. Ese día tiene:"
+    " {openings}. Elige uno de esos, u otro día.",
+  },
+  "no_openings": {
+    "en": "{title} at {shop} fits, but it has no free slot in the next days."
+    " Tell me another day to try.",
+    "es": "{title} en {shop} encaja, pero no tiene huecos libres en los"
+    " próximos días. Dime otro día y lo intento.",
+  },
+  "slot_gone": {
+    "en": "{shop} says that time has just filled up: {message} Nothing was"
+    " paid. Tell me another time and I'll propose again.",
+    "es": "{shop} dice que esa hora se acaba de llenar: {message} No se ha"
+    " pagado nada. Dime otra hora y vuelvo a proponer.",
+  },
   "card_pays": {
     "en": "Your card pays {total}",
     "es": "Tu tarjeta paga {total}",

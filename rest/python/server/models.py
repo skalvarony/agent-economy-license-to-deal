@@ -99,6 +99,8 @@ class UnifiedCheckoutCreateRequest(CheckoutCreateRequest):
   cart_id: str | None = None
   # {"use": n}: how many of the buyer's coins to pay with.
   coins: Any | None = None
+  # {"<item id>": "<ISO 8601 start>"}: the slot booked for each deal line.
+  bookings: Any | None = None
 
   @model_validator(mode="after")
   def validate_cart_id_or_line_items(self) -> "UnifiedCheckoutCreateRequest":
@@ -116,6 +118,8 @@ class UnifiedCheckoutUpdateRequest(CheckoutUpdateRequest):
   buyer_consent: Any | None = None
   # {"use": n}: how many of the buyer's coins to pay with.
   coins: Any | None = None
+  # {"<item id>": "<ISO 8601 start>"}: the slot booked for each deal line.
+  bookings: Any | None = None
 
 
 UnifiedCheckout.model_rebuild()

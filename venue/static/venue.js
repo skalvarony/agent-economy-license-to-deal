@@ -228,6 +228,7 @@
 
   function terms(p) {
     const rows = [];
+    if (p.booking?.starts_at) rows.push(["Booked for", when(p.booking.starts_at) + (p.booking.status === "released" ? " (released)" : "")]);
     if (p.window?.not_before) rows.push(["Service window", `${when(p.window.not_before)} → ${when(p.window.not_after)}`]);
     if (p.cancellation?.refundability) rows.push(["Cancellation", words(p.cancellation.refundability) + (p.cancellation.refundable_until ? ` until ${when(p.cancellation.refundable_until)}` : "")]);
     if (p.expires_at) rows.push(["Voucher expires", when(p.expires_at)]);

@@ -57,6 +57,8 @@ def summarize(shop: Shop, product: dict[str, Any]) -> dict[str, Any]:
     "location": service.get("location"),
     # A dated deal happens in this window; an open-dated one has none.
     "window": service.get("window"),
+    # A deal booked at purchase carries its calendar: days, hours, slots.
+    "booking": service.get("booking"),
     "rating": product.get("rating"),
     "refundability": cancellation.get("refundability"),
     "refundable_until": cancellation.get("refundable_until"),
@@ -556,6 +558,29 @@ class Session:
         run=self.read_wallets,
       ),
       Tool(
+        name="check_availability",
+        description=(
+          "List the days and times a deal can be booked for, with the places"
+          " left in each slot. A deal whose `booking.required` is true is"
+          " booked for a date and time when bought: call this, then pass the"
+          " chosen slot's `starts_at` to propose_purchase."
+        ),
+        parameters={
+          "type": "object",
+          "properties": {
+            "shop": {"type": "string", "enum": shop_ids},
+            "deal_id": {"type": "string"},
+            "from_day": {
+              "type": "string",
+              "description": "First day to list, YYYY-MM-DD. Default: today.",
+            },
+            "days": {"type": "integer", "minimum": 1, "maximum": 14},
+          },
+          "required": ["shop", "deal_id"],
+        },
+        run=self.check_availability,
+      ),
+      Tool(
         name="recall",
         description=(
           "What the agent knows about the customer: profile, preferences,"
@@ -599,6 +624,11 @@ class Session:
               "description": "Coins of that shop to pay with.",
             },
             "promo_code": {"type": "string"},
+            "starts_at": {
+              "type": "string",
+              "description": "For a deal with booking.required: the slot's"
+              " starts_at from check_availability (ISO 8601).",
+            },
             "reason": {
               "type": "string",
               "description": "One sentence for the customer: why this one.",
@@ -631,6 +661,16 @@ class Session:
         run=self.propose_purchase,
       ),
     ]
+
+  async def check_availability(
+    self,
+    shop: str,
+    deal_id: str,
+    from_day: str | None = None,
+    days: int = 7,
+  ) -> dict[str, Any]:
+    """Ask a shop which slots a deal has open, from a day on."""
+    return await self.shops[shop].availability(deal_id, from_day, days)
 
   async def recall(self) -> dict[str, Any]:
     """Return the memory and the recent history."""
@@ -739,6 +779,7 @@ class Session:
     promo_code: str | None = None,
     reason: str = "",
     considered: list[dict[str, Any]] | None = None,
+    starts_at: str | None = None,
   ) -> dict[str, Any]:
     """Open a checkout and put it in front of the person."""
     seller = self.shops[shop]
@@ -762,8 +803,17 @@ class Session:
           "message": f"Not proposed: {deal['title']} breaks {broken}.",
           "rule": broken,
         }
+      if (deal.get("booking") or {}).get("required") and not starts_at:
+        # The shop would refuse the payment anyway; say so before a checkout.
+        return {
+          "error": "booking_required",
+          "message": (
+            f"{deal['title']} is booked for a date and time when bought:"
+            " call check_availability and pass the slot's starts_at."
+          ),
+        }
     checkout = await seller.open_checkout(
-      option_id, quantity, self.customer, coins, promo_code
+      option_id, quantity, self.customer, coins, promo_code, starts_at
     )
     self._close_open("withdrawn")
     proposal = self._propose(seller, checkout, reason, considered or [])
@@ -775,6 +825,7 @@ class Session:
       "title": proposal["title"],
       "image": proposal["image"],
       "service": proposal["service"],
+      "booking": (proposal["service"] or {}).get("booking"),
       "cancellation": proposal["cancellation"],
       "totals": proposal["totals"],
       "total": proposal["total"],
@@ -923,6 +974,10 @@ class Session:
       option_id,
       coins=coins,
       promo_code=(deal.get("promo") or {}).get("code"),
+      # The same slot, if the proposal had one: the person picked a time.
+      starts_at=((proposal.get("service") or {}).get("booking") or {}).get(
+        "starts_at"
+      ),
       reason="You picked this one from the shortlist.",
       considered=proposal["considered"],
     )
@@ -1054,6 +1109,15 @@ class Session:
     except ShopError as refusal:
       if refusal.code == "requires_consent":
         await self._ask_again(shop, proposal)
+        return
+      if refusal.code == "SLOT_UNAVAILABLE":
+        # The slot filled up between the proposal and the yes.
+        self._close(proposal, "failed", method)
+        self._record("stopped", proposal, why="slot_unavailable", method=method)
+        self._note(f"{shop.name} refused the slot: {refusal.message}")
+        self._say(
+          say("slot_gone", self.lang, shop=shop.name, message=refusal.message)
+        )
         return
       self._close(proposal, "failed", method)
       self._record("stopped", proposal, why=refusal.code, method=method)

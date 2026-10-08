@@ -55,6 +55,7 @@ from models import UnifiedCheckoutUpdateRequest
 from pydantic import AnyUrl
 from pydantic import BaseModel
 from services import account_service
+from services import booking_service
 from services import coin_service
 from services import ledger
 from services import payment_rail
@@ -684,6 +685,11 @@ class CheckoutService:
 
     if getattr(checkout_req, "coins", None) is not None:
       existing.coins = checkout_req.coins
+    if getattr(checkout_req, "bookings", None) is not None:
+      # One slot per deal line, by item id; an empty value drops the slot.
+      slots = {**(getattr(existing, "bookings", None) or {})}
+      slots.update(checkout_req.bookings or {})
+      existing.bookings = {k: v for k, v in slots.items() if v}
 
     if platform_config:
       existing.platform = platform_config
@@ -786,6 +792,10 @@ class CheckoutService:
       self.transactions_session,
       checkout,
       count_history=True,
+    )
+    # A deal booked at purchase needs its slot, with room, before any charge.
+    await booking_service.ensure(
+      self.products_session, self.transactions_session, checkout
     )
 
     # What the card pays, after any coins. Nothing, if they cover it all.
@@ -972,6 +982,14 @@ class CheckoutService:
       voucher_codes = await voucher_service.issue_vouchers(
         self.products_session,
         self.transactions_session,
+        order_data,
+        buyer_email=getattr(checkout.buyer, "email", None),
+      )
+      # The slots the buyer chose, taken now and written on the order.
+      await booking_service.book(
+        self.products_session,
+        self.transactions_session,
+        checkout,
         order_data,
         buyer_email=getattr(checkout.buyer, "email", None),
       )
@@ -1598,6 +1616,11 @@ class CheckoutService:
     )
 
     checkout.totals.append(TotalResponse(type="total", amount=grand_total))
+
+    # The slot of each deal booked at purchase, checked against the calendar.
+    await booking_service.attach(
+      self.products_session, self.transactions_session, checkout
+    )
 
   async def _process_payment(self, payment: PaymentCreateRequest) -> str | None:
     """Check the payment instrument; return the token the rail will charge.

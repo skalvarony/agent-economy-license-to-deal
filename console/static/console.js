@@ -336,6 +336,7 @@
         el("div", { class: "head" }, el("b", { text: line.item.title }), state),
         el("div", { class: "codes" }, (v.codes ?? []).map((c) => el("span", { class: "with-copy" }, el("code", { text: c }), copyButton(c)))),
         el("dl", { class: "facts" },
+          line.service?.booking?.starts_at && [el("dt", { text: "Booked for" }), el("dd", { text: when(line.service.booking.starts_at) + (line.service.booking.status === "released" ? " (released)" : "") })],
           line.service?.window?.not_before && [el("dt", { text: "Service" }), el("dd", { text: `${when(line.service.window.not_before)} → ${when(line.service.window.not_after)}` })],
           line.cancellation && [el("dt", { text: "Cancellation" }), el("dd", { text: words(line.cancellation.refundability) + (line.cancellation.refundable_until ? ` until ${when(line.cancellation.refundable_until)}` : "") })],
           v.expires_at && [el("dt", { text: "Expires" }), el("dd", { text: when(v.expires_at) })],

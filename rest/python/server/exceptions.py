@@ -162,6 +162,32 @@ class PurchaseLimitError(UcpError):
     )
 
 
+class BookingRequiredError(UcpError):
+  """Raised when a deal that is booked at purchase has no slot chosen."""
+
+  def __init__(self, message: str):
+    """Initialize BookingRequiredError."""
+    super().__init__(
+      message,
+      code="BOOKING_REQUIRED",
+      status_code=400,
+      severity=ErrorSeverity.UNRECOVERABLE,
+    )
+
+
+class SlotUnavailableError(UcpError):
+  """Raised when the slot asked for is full, past, or not offered."""
+
+  def __init__(self, message: str):
+    """Initialize SlotUnavailableError."""
+    super().__init__(
+      message,
+      code="SLOT_UNAVAILABLE",
+      status_code=409,
+      severity=ErrorSeverity.UNRECOVERABLE,
+    )
+
+
 class VoucherStateError(UcpError):
   """Raised when a voucher action doesn't fit the voucher's current state."""
 

@@ -7,5 +7,6 @@
   "hero_sub": "Tastings, river cruises and things to do with friends, picked by locals.",
   "promo_code": "PRAHA15",
   "font": "bricolage",
-  "coins_back_percent": 5
+  "coins_back_percent": 5,
+  "timezone": "Europe/Prague"
 }

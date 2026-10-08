@@ -28,6 +28,7 @@ available while its pool has codes left.
 | `service.location` | Where |
 | `service.includes` (line items) | What the option bought includes |
 | `service.window` | `not_before` and `not_after`: when the service happens. Dated deals only |
+| `service.booking` | Deals booked for a date and time when bought: `required`, `days` (of the week), `hours`, `slot_minutes`, `capacity_per_slot`, `days_ahead`, `timezone`; on a checkout with a slot and on the order, `starts_at`, `ends_at` and (order) `status`: `booked` or `released` |
 | `cancellation.refundability` | `refundable`, `partially_refundable` or `non_refundable` |
 | `cancellation.refundable_until` | Last moment a refund is due |
 | `cancellation.refund_days` | Open-dated deals: days after buying in which a refund is due |
@@ -53,6 +54,21 @@ A dated deal has a `service.window` and fixed deadlines. An open-dated deal has
 none: the service is booked after buying, and its deadlines are counted in days
 from the purchase (`voucher.valid_days`, `cancellation.refund_days`). On the
 order those become dates (`voucher.expires_at`, `cancellation.refundable_until`).
+
+## Bookings
+
+A deal with `service.booking.required` is booked for a date and time when
+bought. `GET /deals/{id}/availability?from=YYYY-MM-DD&days=7` lists its open
+slots from a day on (`days` up to 14), each with `starts_at`, `ends_at` and
+the places `left`. A checkout names the slot of each such line in `bookings`,
+keyed by the option's id: `{"bookings": {"spa_day_two_3h":
+"2026-10-10T11:00:00+02:00"}}`, on creation or on an update. The line then
+carries the slot under `service.booking`; a start the deal does not offer, a
+past one or a full one answers `409 SLOT_UNAVAILABLE` at once. `complete`
+answers `400 BOOKING_REQUIRED` when such a line has no slot, before any
+charge, and `409 SLOT_UNAVAILABLE` if the slot filled up meanwhile. The
+order's line keeps the slot with `status: booked`; a refund or the merchant's
+cancellation marks it `released` and gives the places back.
 
 ## Promo codes
 

@@ -58,6 +58,70 @@
             "type": "string"
           },
           "description": "Line items only. What the option bought includes."
+        },
+        "booking": {
+          "type": "object",
+          "description": "Present when the deal is booked for a date and time at purchase. The calendar comes with the catalog product and every line; the slot (`starts_at`, `ends_at`) once chosen on a checkout, with `status` on the order.",
+          "required": [
+            "required"
+          ],
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "days": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ]
+              },
+              "description": "Days of the week the deal takes bookings on."
+            },
+            "hours": {
+              "type": "string",
+              "description": "First and last start time, e.g. '10:00-17:00'; several ranges separated by ';'."
+            },
+            "slot_minutes": {
+              "type": "integer",
+              "description": "Minutes between start times."
+            },
+            "capacity_per_slot": {
+              "type": "integer",
+              "description": "Units each start time takes."
+            },
+            "days_ahead": {
+              "type": "integer",
+              "description": "How far ahead the deal can be booked, in days."
+            },
+            "timezone": {
+              "type": "string",
+              "description": "IANA name of the zone the slots are expressed in."
+            },
+            "starts_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "ends_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "booked",
+                "released"
+              ],
+              "description": "Order only."
+            }
+          }
         }
       }
     },

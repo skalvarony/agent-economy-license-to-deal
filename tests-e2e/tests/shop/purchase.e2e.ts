@@ -19,6 +19,16 @@ async function addSpaDayToCart({ app, screen, browser }) {
   await browser.locator('#drawer form[action="/checkout"] button').tap();
 }
 
+// The spa day is booked for a date and time: the checkout page asks for
+// them before it takes a payment.
+async function chooseFirstSlot({ screen, browser }) {
+  await expect(screen.getByRole('button', 'Choose a date and time first')).toBeVisible();
+  // The first slot listed (the shops are freshly seeded, so it has room).
+  await browser.locator('select[name="starts_at"]').selectOption({ index: 1 });
+  await screen.getByRole('button', 'Set the time').tap();
+  await expect(browser.locator('.slot .booked')).toContainText('Booked for');
+}
+
 test('a customer pays with coins and a card and gets a voucher code', async ({ app, screen, browser }) => {
   const customer = newCustomer();
   await grantCoins(customer.email, 40);
@@ -26,6 +36,7 @@ test('a customer pays with coins and a card and gets a voucher code', async ({ a
   await expect(browser.locator('.meta .coins')).toHaveText('40 coins');
 
   await addSpaDayToCart({ app, screen, browser });
+  await chooseFirstSlot({ screen, browser });
   await expect(screen.getByRole('button', 'Pay $99')).toBeVisible();
   await screen.getByRole('button', 'Use 40').tap();
 
@@ -35,6 +46,8 @@ test('a customer pays with coins and a card and gets a voucher code', async ({ a
 
   await expect(browser.locator('.notice.good')).toHaveText('Payment received. Your voucher is ready.');
   await expect(browser.locator('.code li strong')).toHaveText(/^DSK-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+  // The voucher says when the visit is booked for.
+  await expect(browser.locator('.lines .fine')).toContainText('Booked for');
   await expect(browser.locator('.buy .sum')).toContainText('40 coins');
   // 40 spent, 5 earned back on the $59 the card paid.
   await expect(browser.locator('.meta .coins')).toHaveText('5 coins');
@@ -44,6 +57,7 @@ test('a total that changes after the page opened is not charged without asking',
   const customer = newCustomer();
   await signUp({ app, screen }, customer);
   await addSpaDayToCart({ app, screen, browser });
+  await chooseFirstSlot({ screen, browser });
   await expect(screen.getByRole('button', 'Pay $99')).toBeVisible();
 
   await setBookingFee(2500);

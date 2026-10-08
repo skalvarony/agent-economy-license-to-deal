@@ -20,6 +20,7 @@ import dependencies
 from fastapi.testclient import TestClient
 import httpx
 from server.server import app
+from services import booking_service
 from services import payment_rail
 from services import visitor
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1818,6 +1819,243 @@ class _Redirect:
   def __init__(self, location: str):
     """Initialize _Redirect."""
     self.headers = {"location": location}
+
+
+class BookingTest(ShopTestCase):
+  """A deal booked for a date and time when bought: slots, room, release."""
+
+  def setUp(self) -> None:
+    """Add a sauna open every evening, two cabins per hour."""
+    super().setUp()
+    asyncio.run(self._seed_bookable())
+    # A day two days from now: always open, always in the future.
+    self.day = (
+      datetime.datetime.now(booking_service.timezone())
+      + datetime.timedelta(days=2)
+    ).date().isoformat()
+
+  async def _seed_bookable(self) -> None:
+    sauna = _deal("sauna", "Private Sauna", "wellness", "refundable")
+    sauna.service_not_before = sauna.service_not_after = None
+    sauna.refundable_until = None
+    sauna.refund_days = 14
+    sauna.voucher_expires_at = None
+    sauna.voucher_valid_days = 90
+    sauna.slot_days = "mon,tue,wed,thu,fri,sat,sun"
+    sauna.slot_hours = "17:00-21:00"
+    sauna.slot_minutes = 60
+    sauna.slot_capacity = 2
+    sauna.booking_days_ahead = 30
+    async with self.products_session_factory() as session:
+      session.add_all(
+        [
+          sauna,
+          db.Product(id="sauna-60", title="Private Sauna · 60 min", price=4900),
+          db.DealOption(
+            product_id="sauna-60", deal_id="sauna", title="60 min", position=0
+          ),
+        ]
+      )
+      await session.commit()
+    async with self.transactions_session_factory() as session:
+      session.add_all(
+        db.VoucherCode(code=f"SAUNA-{n}", product_id="sauna-60")
+        for n in range(6)
+      )
+      await session.commit()
+
+  def _availability(self, deal: str = "sauna", **params: str) -> dict:
+    response = self.client.get(f"/deals/{deal}/availability", params=params)
+    self.assertEqual(response.status_code, 200, response.text)
+    return response.json()
+
+  def _slot(self, index: int = 0) -> dict:
+    """The slots of the test day, fresh from the shop."""
+    listed = self._availability(**{"from": self.day, "days": 1})
+    day = next(d for d in listed["days"] if d["date"] == self.day)
+    return day["slots"][index]
+
+  def _create_booked(
+    self, starts_at: str, quantity: int = 1, product: str = "sauna-60"
+  ):
+    return self.client.post(
+      "/checkout-sessions",
+      headers=self._headers(),
+      json={
+        "line_items": [{"item": {"id": product}, "quantity": quantity}],
+        "bookings": {product: starts_at},
+      },
+    )
+
+  def _code(self, response) -> str:
+    return response.json()["messages"][0]["code"]
+
+  def test_availability_lists_the_calendar(self) -> None:
+    """The open slots, by day, with the places left; the catalog says so."""
+    listed = self._availability(**{"from": self.day, "days": 2})
+    self.assertEqual(listed["timezone"], "Europe/Prague")
+    self.assertEqual(listed["capacity_per_slot"], 2)
+    self.assertEqual(len(listed["days"]), 2)
+    day = listed["days"][0]
+    self.assertEqual(day["date"], self.day)
+    self.assertEqual(
+      [s["starts_at"][11:16] for s in day["slots"]],
+      ["17:00", "18:00", "19:00", "20:00", "21:00"],
+    )
+    self.assertTrue(all(s["left"] == 2 for s in day["slots"]))
+    self.assertEqual(day["slots"][0]["ends_at"][11:16], "18:00")
+    # A deal without a calendar needs no booking.
+    self.assertFalse(self._availability("spa")["required"])
+    # The catalog carries the calendar, so an agent knows before proposing.
+    found = self.client.post(
+      "/catalog/search", headers=self._headers(), json={"query": "sauna"}
+    ).json()
+    product = next(p for p in found["products"] if p["id"] == "sauna")
+    booking = product["service"]["booking"]
+    self.assertTrue(booking["required"])
+    self.assertEqual(booking["slot_minutes"], 60)
+    self.assertEqual(booking["hours"], "17:00-21:00")
+
+  def test_a_slot_is_booked_with_the_purchase(self) -> None:
+    """The checkout echoes the slot; the order keeps it; the room shrinks."""
+    slot = self._slot()
+    created = self._create_booked(slot["starts_at"])
+    self.assertEqual(created.status_code, 201, created.text)
+    checkout = created.json()
+    booking = checkout["line_items"][0]["service"]["booking"]
+    self.assertEqual(booking["starts_at"], slot["starts_at"])
+    self.assertEqual(booking["ends_at"], slot["ends_at"])
+    done = self._complete(checkout["id"])
+    self.assertEqual(done.status_code, 200, done.text)
+    order = self._order(done.json()["order"]["id"])
+    booked = order["line_items"][0]["service"]["booking"]
+    self.assertEqual(booked["status"], "booked")
+    self.assertEqual(booked["starts_at"], slot["starts_at"])
+    self.assertEqual(self._slot()["left"], 1)
+
+  def test_no_slot_means_no_charge(self) -> None:
+    """A deal booked at purchase is not paid until its slot is chosen."""
+    checkout = self._create("sauna-60")
+    booking = checkout["line_items"][0]["service"]["booking"]
+    self.assertTrue(booking["required"])
+    self.assertNotIn("starts_at", booking)
+    refused = self._complete(checkout["id"])
+    self.assertEqual(refused.status_code, 400, refused.text)
+    self.assertEqual(self._code(refused), "BOOKING_REQUIRED")
+    self.assertEqual(self._slot()["left"], 2)
+    self.assertNotIn("PAYMENT_CAPTURED", self._events())
+
+  def test_a_full_slot_is_refused(self) -> None:
+    """Two cabins an hour: the third booking, or three at once, is refused."""
+    slot = self._slot()
+    for _ in range(2):
+      done = self._complete(self._create_booked(slot["starts_at"]).json()["id"])
+      self.assertEqual(done.status_code, 200, done.text)
+    self.assertEqual(self._slot()["left"], 0)
+    refused = self._create_booked(slot["starts_at"])
+    self.assertEqual(refused.status_code, 409, refused.text)
+    self.assertEqual(self._code(refused), "SLOT_UNAVAILABLE")
+    self.assertIn("full", refused.json()["messages"][0]["content"])
+    too_many = self._create_booked(self._slot(1)["starts_at"], quantity=3)
+    self.assertEqual(too_many.status_code, 409, too_many.text)
+    # A slot that fills up after the checkout opened is caught at payment.
+    other = self._slot(2)
+    waiting = self._create_booked(other["starts_at"]).json()
+    for _ in range(2):
+      self._complete(self._create_booked(other["starts_at"]).json()["id"])
+    late = self._complete(waiting["id"])
+    self.assertEqual(late.status_code, 409, late.text)
+    self.assertEqual(self._code(late), "SLOT_UNAVAILABLE")
+    self.assertEqual(self._slot(2)["left"], 0)
+
+  def test_a_time_the_deal_does_not_offer_is_refused(self) -> None:
+    """Off hours, closed days, the past and nonsense are all turned down."""
+    off_hours = self._create_booked(f"{self.day}T09:00:00+02:00")
+    self.assertEqual(off_hours.status_code, 409, off_hours.text)
+    self.assertEqual(self._code(off_hours), "SLOT_UNAVAILABLE")
+    past = self._create_booked("2020-01-01T17:00:00+01:00")
+    self.assertEqual(past.status_code, 409, past.text)
+    nonsense = self._create_booked("tomorrow at five")
+    self.assertEqual(nonsense.status_code, 400, nonsense.text)
+    self.assertEqual(self._code(nonsense), "INVALID_REQUEST")
+    # An hour given without an offset is read in the shop's timezone.
+    naive = self._create_booked(f"{self.day}T18:00")
+    self.assertEqual(naive.status_code, 201, naive.text)
+    starts_at = naive.json()["line_items"][0]["service"]["booking"]["starts_at"]
+    self.assertTrue(starts_at.startswith(f"{self.day}T18:00:00+0"), starts_at)
+
+  def test_a_refund_or_a_cancellation_releases_the_slot(self) -> None:
+    """The places go back to the calendar; the order says released."""
+    slot = self._slot()
+    done = self._complete(self._create_booked(slot["starts_at"]).json()["id"])
+    order_id = done.json()["order"]["id"]
+    self.assertEqual(self._slot()["left"], 1)
+    refunded = self.client.post(
+      f"/orders/{order_id}/refund", headers=SECRET, json={"reason": "D1"}
+    )
+    self.assertEqual(refunded.status_code, 200, refunded.text)
+    self.assertEqual(self._slot()["left"], 2)
+    booking = self._order(order_id)["line_items"][0]["service"]["booking"]
+    self.assertEqual(booking["status"], "released")
+    done = self._complete(self._create_booked(slot["starts_at"]).json()["id"])
+    cancelled = self.client.post(
+      f"/orders/{done.json()['order']['id']}/cancel", headers=SECRET
+    )
+    self.assertEqual(cancelled.status_code, 200, cancelled.text)
+    self.assertEqual(self._slot()["left"], 2)
+
+  def test_the_web_checkout_asks_for_the_slot(self) -> None:
+    """The page offers the open slots; paying waits for the choice."""
+    self._signup()
+    added = self.client.post(
+      "/cart/add",
+      data={"product_id": "sauna-60", "quantity": "1"},
+      follow_redirects=False,
+    )
+    self.assertEqual(added.status_code, 303, added.text)
+    started = self.client.post("/checkout", data={}, follow_redirects=False)
+    path = started.headers["location"]
+    page = self.client.get(path).text
+    first, second = self._slot(0), self._slot(1)
+    self.assertIn('<select name="starts_at"', page)
+    self.assertIn(first["starts_at"], page)
+    self.assertIn("Choose a date and time first", page)
+    refused = self.client.post(
+      f"{path}/pay",
+      data={"card": "ok", "seen_total": "4900"},
+      follow_redirects=False,
+    )
+    self.assertEqual(refused.status_code, 303, refused.text)
+    self.assertIn("notice=booking", refused.headers["location"])
+    self.assertEqual(self._slot()["left"], 2)
+    chosen = self.client.post(
+      f"{path}/booking",
+      data={"item_id": "sauna-60", "starts_at": first["starts_at"]},
+      follow_redirects=False,
+    )
+    self.assertIn("notice=booked", chosen.headers["location"])
+    page = self.client.get(path).text
+    self.assertIn("Booked for", page)
+    self.assertIn("Pay $49", page)
+    # Changing one's mind before paying is free.
+    self.client.post(
+      f"{path}/booking",
+      data={"item_id": "sauna-60", "starts_at": second["starts_at"]},
+      follow_redirects=False,
+    )
+    page = self.client.get(path).text
+    self.assertIn(f'value="{second["starts_at"]}" selected', page)
+    paid = self.client.post(
+      f"{path}/pay",
+      data={"card": "ok", "seen_total": "4900"},
+      follow_redirects=False,
+    )
+    self.assertEqual(paid.status_code, 303, paid.text)
+    self.assertIn("/vouchers/", paid.headers["location"])
+    voucher = self.client.get(paid.headers["location"]).text
+    self.assertIn("Booked for", voucher)
+    self.assertEqual(self._slot(1)["left"], 1)
+    self.assertEqual(self._slot(0)["left"], 2)
 
 
 if __name__ == "__main__":

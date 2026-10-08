@@ -71,6 +71,9 @@ DEAL_NUMBERS = {
   "voucher_valid_days": int,
   "limit_per_person": int,
   "repurchase_days": int,
+  "slot_minutes": int,
+  "slot_capacity": int,
+  "booking_days_ahead": int,
   "appointment_required": lambda cell: cell.lower() == "true",
   # One cell, items separated by '|'.
   "highlights": lambda cell: [item.strip() for item in cell.split("|")],

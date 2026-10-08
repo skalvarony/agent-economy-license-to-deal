@@ -7,5 +7,6 @@
   "hero_sub": "Spa days, saunas and massages across Prague 7, with free cancellation on every deal.",
   "promo_code": "DUSK10",
   "font": "fraunces",
-  "coins_back_percent": 10
+  "coins_back_percent": 10,
+  "timezone": "Europe/Prague"
 }

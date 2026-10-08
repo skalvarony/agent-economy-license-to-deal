@@ -195,8 +195,55 @@ def refund_terms(cancellation: dict[str, Any]) -> str:
   return text
 
 
+_DAY_NAMES = {
+  "mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu", "fri": "Fri",
+  "sat": "Sat", "sun": "Sun",
+}
+
+
+def days_text(days: list[str]) -> str:
+  """Say which days of the week, e.g. 'Every day' or 'Wed to Sun'."""
+  order = list(_DAY_NAMES)
+  chosen = [d for d in order if d in days]
+  if len(chosen) == 7:
+    return "Every day"
+  if not chosen:
+    return "No day"
+  first, last = order.index(chosen[0]), order.index(chosen[-1])
+  if last - first + 1 == len(chosen) and len(chosen) > 2:
+    return f"{_DAY_NAMES[chosen[0]]} to {_DAY_NAMES[chosen[-1]]}"
+  return " and ".join(_DAY_NAMES[d] for d in chosen) if len(chosen) <= 2 else (
+    ", ".join(_DAY_NAMES[d] for d in chosen[:-1]) + f" and {_DAY_NAMES[chosen[-1]]}"
+  )
+
+
+def hours_text(booking: dict[str, Any]) -> str:
+  """Say the calendar a deal is booked on: days, hours and slot length."""
+  hours = ", ".join(
+    part.strip().replace("-", " to ") for part in (booking.get("hours") or "").split(";")
+  )
+  return (
+    f"{days_text(booking.get('days') or [])}, {hours},"
+    f" every {booking.get('slot_minutes')} min"
+  )
+
+
+def slot_text(booking: dict[str, Any]) -> str:
+  """Say the slot that was booked, e.g. 'Sat 10 Oct, 11:00 to 12:00'."""
+  if booking.get("ends_at"):
+    return window(booking["starts_at"], booking["ends_at"])
+  return moment(booking["starts_at"])
+
+
 def when_text(terms: dict[str, Any], short: bool = False) -> str:
-  """Say when the service happens: on its date, or whenever it is booked."""
+  """Say when the service happens: the slot booked, its date, or any day."""
+  booking = terms["service"].get("booking") or {}
+  if booking.get("starts_at"):
+    return moment(booking["starts_at"]) if short else slot_text(booking)
+  if booking.get("required"):
+    if short:
+      return "Date and time at checkout"
+    return f"A date and time you pick at checkout: {hours_text(booking)}"
   if span := terms["service"].get("window"):
     if short:
       return day(span["not_before"])
@@ -221,8 +268,19 @@ def validity_text(voucher: dict[str, Any]) -> str:
   return text + " Amount paid never expires."
 
 
-def booking_text(redemption: dict[str, Any]) -> str:
-  """Say whether to book ahead; the contact is only known once bought."""
+def booking_text(
+  redemption: dict[str, Any], booking: dict[str, Any] | None = None
+) -> str:
+  """Say how the visit is booked: at checkout, or by contacting the venue."""
+  booking = booking or {}
+  if booking.get("starts_at"):
+    held = "Your place is held" if booking.get("status") != "released" else "The place was released"
+    return f"Booked for {slot_text(booking)}. {held}."
+  if booking.get("required"):
+    return (
+      "You pick the date and time at checkout, and the shop holds your"
+      f" place ({booking.get('capacity_per_slot', 1)} per slot)."
+    )
   if not redemption.get("appointment_required"):
     return "No appointment needed."
   if contact := redemption.get("booking_contact"):
@@ -247,7 +305,7 @@ def fine_print(terms: dict[str, Any]) -> str:
     ("Includes", ", ".join(service.get("includes") or [])),
     ("When", when_text(terms)),
     ("Where", f"{service['merchant']}, {service['location']}"),
-    ("Booking", booking_text(terms["redemption"])),
+    ("Booking", booking_text(terms["redemption"], service.get("booking"))),
     ("How to redeem", terms["redemption"]["instructions"]),
     ("Cancellation", refund_terms(terms["cancellation"])),
     ("Validity", validity_text(terms["voucher"])),

@@ -146,6 +146,17 @@ class Shop:
     """Return the customer's coins in this shop and what the shop gives back."""
     return await self.call("GET", f"/wallet?email={quote(email)}", note=note)
 
+  async def availability(
+    self, deal_id: str, start: str | None = None, days: int = 7
+  ) -> dict[str, Any]:
+    """Return a deal's open slots from a day on, with the places left."""
+    query = f"?days={int(days)}" + (f"&from={quote(str(start))}" if start else "")
+    return await self.call(
+      "GET",
+      f"/deals/{quote(deal_id)}/availability{query}",
+      note=f"Availability: {deal_id}",
+    )
+
   async def open_checkout(
     self,
     item_id: str,
@@ -153,12 +164,19 @@ class Shop:
     buyer: dict[str, str],
     coins: int = 0,
     promo_code: str | None = None,
+    starts_at: str | None = None,
   ) -> dict[str, Any]:
-    """Open a checkout for one option. Nothing is paid yet."""
+    """Open a checkout for one option. Nothing is paid yet.
+
+    `starts_at` books the slot of a deal that is booked at purchase; the
+    shop refuses a slot it doesn't offer or that is full.
+    """
     body: dict[str, Any] = {
       "line_items": [{"item": {"id": item_id}, "quantity": quantity}],
       "buyer": buyer,
     }
+    if starts_at:
+      body["bookings"] = {item_id: starts_at}
     if coins:
       body["coins"] = {"use": coins}
     if promo_code:
