@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · {{NAME}}</title>
+<style>
+:root { --bg:#f6f6f6; --card:#fff; --text:#0d0d0d; --muted:#5d5d5d; --line:#e5e5e5; --ink:#0d0d0d; --on-ink:#fff; --bad:#c8291d; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg:#171717; --card:#212121; --text:#ececec; --muted:#b4b4b4; --line:#383838; --ink:#fff; --on-ink:#0d0d0d; --bad:#ff7a70; } }
+* { box-sizing: border-box; }
+body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--text); font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Inter", sans-serif; -webkit-font-smoothing: antialiased; padding: 16px; }
+form { width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 28px; display: grid; gap: 14px; }
+h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; }
+p { margin: 0; color: var(--muted); font-size: 13.5px; }
+label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+input { font: inherit; color: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); outline: 0; }
+input:focus { border-color: var(--text); }
+button { font: inherit; font-weight: 500; padding: 10px 14px; border: 0; border-radius: 999px; background: var(--ink); color: var(--on-ink); cursor: pointer; }
+.error { color: var(--bad); }
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+  <h1>{{NAME}}</h1>
+  <p>For the team. Sign in to continue.</p>
+  {{NOTICE}}
+  <input type="hidden" name="next" value="{{NEXT}}">
+  <label>User <input name="username" autocomplete="username" required autofocus value="{{USER}}"></label>
+  <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+  <button type="submit">Sign in</button>
+</form>
+</body>
+</html>
