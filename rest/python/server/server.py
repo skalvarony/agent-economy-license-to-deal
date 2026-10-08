@@ -26,12 +26,15 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import generated_routes.ucp_routes
+from routes.account import router as account_router
 from routes.catalog import router as catalog_router
 from routes.discovery import router as discovery_router
 from routes.mcp import router as mcp_router
 from routes.order import router as order_router
+from routes.storefront import router as storefront_router
 from routes.voucher import router as voucher_router
 from routes.wallet import router as wallet_router
+from routes.web_checkout import router as web_checkout_router
 import routes.ucp_implementation
 import uvicorn
 
@@ -133,6 +136,9 @@ app.include_router(order_router)
 app.include_router(discovery_router)
 app.include_router(mcp_router)
 app.include_router(catalog_router)
+app.include_router(storefront_router)
+app.include_router(web_checkout_router)
+app.include_router(account_router)
 app.include_router(voucher_router)
 app.include_router(wallet_router)
 

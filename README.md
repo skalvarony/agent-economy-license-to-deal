@@ -22,7 +22,7 @@ python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking f
 scripts/shops.sh stop
 ```
 
-Tests: `cd rest/python/server && uv run pytest` (245). Each shop also ships
+Tests: `cd rest/python/server && uv run pytest` (340). Each shop also ships
 as a container (`docker build rest/python/server`); `SHOP`, `SIMULATION_SECRET`
 and the other knobs are listed at the top of `docker-entrypoint.sh`.
 
@@ -49,7 +49,9 @@ part the way it came. Agents read `GET /wallet?email=` and send
 `coins: {"use": n}`.
 
 
-## The agent door
+## The two doors
+
+Both end in the same checkout code, order, voucher, payment and ledger events.
 
 **For agents (UCP, `UCP-Agent` header, RFC 9421 signature):**
 
@@ -62,7 +64,6 @@ part the way it came. Agents read `GET /wallet?email=` and send
 | `GET /orders/{id}` | The order: only for the agent that placed it, or the shop |
 | `GET /wallet?email=` | The buyer's coins here and the shop's percentage back |
 
-
 With `REQUIRE_SIGNATURES=1` (the default on the server) an unsigned request
 gets `401 signature_missing`, a wrong key `401 signature_invalid`, and a
 profile that is not public https `400 invalid_profile_url`. If the total
@@ -72,13 +73,35 @@ agent's profile, the outcome of the signature check and when it was placed.
 An agent may add `agent_context` to `complete` (outside UCP): its name, who
 proposed the deal, through which channel the customer said yes
 (`page`, `card:ChatGPT`, `card:Claude Desktop`, `telegram`), when, and where
-it keeps its records.
+it keeps its records. The shop keeps the known keys, as short strings, and
+shows them to the buyer in "My vouchers" next to its own ledger of the order
+(checkout opened, paid, voucher issued, used, refunded…), so a person can
+tell what they bought themselves from what their agent bought, and how.
+
+**For people (browser, cookies):** `/` and `/deals/{id}` to browse, `/cart`,
+`/login`, `/account`, `/checkout/{id}` (needs an account), and `/vouchers`.
+There is no public registration: the shop creates accounts (`POST /accounts`
+with the merchant secret; `shops/<shop>/users.csv` seeds them). An order belongs to the account
+whose email is its buyer, so an agent's purchase shows up in the person's
+account, marked as the agent's. Passwords are scrypt hashes; cookies are
+HttpOnly, and Secure behind HTTPS. The pages are plain HTML forms that
+`routes/assets/shop.js` submits in place.
+
+The web door does not guess whether a browser is driven by a person or an AI.
+It recognises agents that declare themselves (published names such as
+`ChatGPT-User`, or Web Bot Auth signatures): they may browse and see a notice,
+and get `403` at the checkout with the way to the agent door. Every web order
+keeps hints about its sender (headless browser, HTTP client, payment sent
+without the page's script, paid within two seconds). Hints are not proof; they
+are for whoever decides a complaint (`services/visitor.py`).
 
 **For the merchant** (`Simulation-Secret` header): `POST /orders/{id}/cancel`,
 `/redeem`, `/refund`; `POST /testing/booking-fee` adds a fee to every
 checkout; `POST /wallets/grant`, `GET /wallets/{email}`; `GET /inventory`,
 `GET /inventory/{option}/codes`, `POST` to add codes; `GET /deals`;
-`GET /orders`, every order; `GET /ledger`, the events of all three shops; `PUT /orders/{id}`.
+`GET /orders`, every order; `GET /ledger`, the events of all three shops; `PUT /orders/{id}`;
+`POST /accounts` and `PUT /accounts/{email}/password`.
+
 
 ## Real and simulated
 
@@ -93,12 +116,13 @@ the merchant; the agent's decisions until a model is connected.
 
 ## Layout
 
+
 - `rest/python/`: the UCP sample (Apache 2.0, `Universal-Commerce-Protocol/
   samples` at `01755bc`; the repository's second commit is the unmodified
   copy). Added under `server/`: `services/voucher_service.py`,
-  `payment_rail.py`, `ledger.py`, `account_service.py`, `coin_service.py`;
-  `routes/catalog.py`, `voucher.py`, `wallet.py`; `approval_checks.py` (stub
-  for the buyer-approval checks).
+  `payment_rail.py`, `ledger.py`, `account_service.py`, `coin_service.py`,
+  `visitor.py`; `routes/catalog.py`, `storefront.py`, `web_checkout.py`,
+  `account.py`, `voucher.py`, `wallet.py` with `routes/assets/`;
 - `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).
