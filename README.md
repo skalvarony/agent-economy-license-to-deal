@@ -33,9 +33,7 @@ pytest` (40), `cd console && uv run pytest` (16), `cd venue && uv run pytest`
 (5). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
 running): `npm install && npx playwright install chromium` once, then
 `npm test` (five shop flows) and `npm run test:agent` (three agent flows).
-They use exact checks and need no model. Each shop also ships as a container
-(`docker build rest/python/server`); `SHOP`, `SIMULATION_SECRET` and the
-other knobs are listed at the top of `docker-entrypoint.sh`.
+They use exact checks and need no model.
 
 `deploy/` runs it all on one VM with Docker Compose and Caddy; its `README.md`
 has the steps. Secrets live only in the VM's `deploy/.env`.
@@ -58,7 +56,6 @@ A card payment earns the shop's percentage back. A checkout can be paid with
 coins, a card or both; it shows the exact split, and a refund returns each
 part the way it came. Agents read `GET /wallet?email=` and send
 `coins: {"use": n}`.
-
 
 ## The two doors
 
@@ -92,7 +89,8 @@ tell what they bought themselves from what their agent bought, and how.
 **For people (browser, cookies):** `/` and `/deals/{id}` to browse, `/cart`,
 `/login`, `/account`, `/checkout/{id}` (needs an account), and `/vouchers`.
 There is no public registration: the shop creates accounts (`POST /accounts`
-with the merchant secret; `shops/<shop>/users.csv` seeds them). An order belongs to the account
+with the merchant secret; `shops/<shop>/users.csv` seeds them, and on the
+server `deploy/add-account.sh` adds one). An order belongs to the account
 whose email is its buyer, so an agent's purchase shows up in the person's
 account, marked as the agent's. Passwords are scrypt hashes; cookies are
 HttpOnly, and Secure behind HTTPS. The pages are plain HTML forms that
@@ -112,7 +110,6 @@ checkout; `POST /wallets/grant`, `GET /wallets/{email}`; `GET /inventory`,
 `GET /inventory/{option}/codes`, `POST` to add codes; `GET /deals`;
 `GET /orders`, every order; `GET /ledger`, the events of all three shops; `PUT /orders/{id}`;
 `POST /accounts` and `PUT /accounts/{email}/password`.
-
 
 ## The agent
 
@@ -248,9 +245,7 @@ catalogue with its prices, ratings and reviews; the payment on the `mock`
 rail (every order and ledger line names its rail); redemption at the venue;
 the merchant; the agent's decisions until a model is connected.
 
-
 ## Layout
-
 
 - `rest/python/`: the UCP sample (Apache 2.0, `Universal-Commerce-Protocol/
   samples` at `01755bc`; the repository's second commit is the unmodified
@@ -258,15 +253,16 @@ the merchant; the agent's decisions until a model is connected.
   `payment_rail.py`, `ledger.py`, `account_service.py`, `coin_service.py`,
   `visitor.py`; `routes/catalog.py`, `storefront.py`, `web_checkout.py`,
   `account.py`, `voucher.py`, `wallet.py` with `routes/assets/`;
-- `agent/`: `app.py` (web app), `session.py` (conversation, tools, approval,
-  evidence), `brain.py` and `model_brain.py`, `shops.py` (UCP calls),
-  `signing.py`, `static/`.
+  `approval_checks.py` (stub for the buyer-approval checks); `voucher_test.py`.
 - `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).
+- `agent/`: `app.py` (web app), `session.py` (conversation, tools, approval,
+  evidence), `brain.py` and `model_brain.py`, `shops.py` (UCP calls),
+  `signing.py`, `static/`.
 - `console/`: the shops' console, `app.py` and `static/`.
 - `venue/`: the venue simulator, `app.py` and `static/`.
 - `scripts/`: start and stop the shops and the agent; the smoke test.
 - `deploy/`: Dockerfiles are in each app; here the Compose file, Caddyfile,
-  `.env.example`, the front page and the steps.
+  `.env.example`, `set-secrets.sh` and the steps.
 - `tests-e2e/`: browser tests, the only Node code in the repo.
