@@ -245,6 +245,18 @@ catalogue with its prices, ratings and reviews; the payment on the `mock`
 rail (every order and ledger line names its rail); redemption at the venue;
 the merchant; the agent's decisions until a model is connected.
 
+On the `stripe` rail the shop reads Stripe's fraud check (Radar) on every
+charge and keeps it on the order. Set `AGENT_CARD_TOKEN` to one of Stripe's
+test payment methods (https://docs.stripe.com/testing) to show each case:
+`pm_card_visa` is a normal payment; `pm_card_riskLevelElevated` is sold and
+marked "Fraud check: review" in the console, with a `PAYMENT_RISK_REVIEW`
+ledger line; `pm_card_riskLevelHighest` is authorised, then cancelled by the
+shop (`RISK_HIGHEST`); `pm_card_radarBlock` is blocked by Stripe
+(`RISK_BLOCKED`); `pm_card_threeDSecure2Required` asks the person to confirm
+with the bank, which an agent cannot do (`SHOPPER_ACTION_REQUIRED`). Stripe
+may itself block the highest-risk card, depending on the account's Radar
+settings; then the shop reports `RISK_BLOCKED` instead.
+
 ## Layout
 
 - `rest/python/`: the UCP sample (Apache 2.0, `Universal-Commerce-Protocol/

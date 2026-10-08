@@ -311,6 +311,7 @@ class VoucherService:
         "created": None,
         "refunds": [],
         "url": None,
+        "risk": payment.get("risk"),
       }
     return await self.rail.inspect(payment["payment_id"])
 

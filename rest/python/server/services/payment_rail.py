@@ -10,8 +10,12 @@ show:
   test key moves no money; test cards and test payment methods work). The
   lock is a PaymentIntent with manual capture; the capture takes it; a
   refund gives it back, or cancels it if it was never captured.
+
+`assess` tells what the rail's fraud check made of a locked payment (Stripe
+Radar); the checkout code decides what to do with it.
 """
 
+import contextlib
 import datetime
 import os
 from typing import Any, Protocol
@@ -27,6 +31,9 @@ STRIPE_TIMEOUT_SECONDS = 20
 # One connection pool to Stripe for the whole server. Tests point TRANSPORT
 # at a fake Stripe before the first call.
 TRANSPORT: httpx.AsyncBaseTransport | None = None
+
+# Error codes with which Stripe says its fraud check (Radar) blocked a charge.
+FRAUD_CODES = {"fraudulent", "fraud"}
 _http: httpx.AsyncClient | None = None
 
 
@@ -54,6 +61,15 @@ class PaymentRail(Protocol):
   ) -> str:
     """Authorise `amount` with `credential` and return the payment ID."""
 
+  async def assess(self, payment_id: str) -> dict[str, Any] | None:
+    """Return the rail's fraud check of a locked payment, or None.
+
+    Keys: `level` (normal, elevated, highest, not_assessed, unknown), `score`
+    (0 to 99, or None: Stripe gives it only on some plans), `outcome`
+    (authorized, manual_review, issuer_declined, blocked, invalid), `reason`
+    and `seller_message`. A rail with no fraud check answers None.
+    """
+
   async def capture(self, payment_id: str) -> None:
     """Take a locked payment."""
 
@@ -67,7 +83,8 @@ class PaymentRail(Protocol):
     captured, refunded, partly_refunded, canceled, failed), `amount`,
     `captured`, `refunded` (cents), `currency`, `card` ({brand, last4,
     exp_month, exp_year} or None), `created` (ISO), `refunds` ([{id, amount,
-    status, reason, created}]), `url` (the rail's own page for it, or None).
+    status, reason, created}]), `url` (the rail's own page for it, or None),
+    `risk` (what `assess` returns, or None).
     """
 
 
@@ -86,6 +103,11 @@ class MockRail:
     """Pretend to authorise the payment."""
     del amount, currency, reference, credential  # Unused.
     return f"mock_pay_{uuid.uuid4().hex[:12]}"
+
+  async def assess(self, payment_id: str) -> dict[str, Any] | None:
+    """Say there is no fraud check: a simulation has none."""
+    del payment_id  # Unused.
+    return None
 
   async def capture(self, payment_id: str) -> None:
     """Pretend to capture the payment."""
@@ -110,6 +132,7 @@ class MockRail:
       "created": None,
       "refunds": [],
       "url": None,
+      "risk": None,
     }
 
 
@@ -131,6 +154,9 @@ class StripeRail:
         "The stripe rail needs STRIPE_SECRET_KEY in the environment"
       )
     self.http = stripe_http()
+    # What Radar said at the lock, by PaymentIntent, so `assess` needs no
+    # second call to Stripe for a payment this instance locked.
+    self._risk: dict[str, dict[str, Any] | None] = {}
 
   @property
   def mode(self) -> str:
@@ -155,6 +181,11 @@ class StripeRail:
     body = response.json()
     if response.status_code >= 400:
       problem = body.get("error") or {}
+      if {problem.get("decline_code"), problem.get("code")} & FRAUD_CODES:
+        # Radar refused the charge itself. Say so, not "card declined".
+        raise PaymentFailedError(
+          "Stripe's fraud check blocked this payment", code="RISK_BLOCKED"
+        )
       raise PaymentFailedError(
         f"Stripe declined: {problem.get('message', response.reason_phrase)}",
         code=(problem.get("decline_code") or problem.get("code") or "stripe")
@@ -186,6 +217,8 @@ class StripeRail:
         # Cards only: a redirect-based method would need a return URL, and
         # this confirmation happens on the server, with nobody to redirect.
         "payment_method_types[]": "card",
+        # The charge with its fraud check (`outcome`), in this one answer.
+        "expand[]": "latest_charge",
         "confirm": "true",
         "capture_method": "manual",
         "description": f"Checkout {reference}",
@@ -193,14 +226,47 @@ class StripeRail:
       },
       **{"Idempotency-Key": f"lock-{reference}-{amount}-{credential}"},
     )
+    risk = _risk(intent.get("latest_charge"))
+    if risk and risk["outcome"] == "blocked":
+      await self._release(intent["id"])
+      raise PaymentFailedError(
+        "Stripe's fraud check blocked this payment", code="RISK_BLOCKED"
+      )
+    if intent.get("status") == "requires_action":
+      # The card's bank wants the person to confirm (3-D Secure). The shop
+      # confirms on the server with nobody at the screen, and an agent
+      # cannot do this step for the person, so the payment stops here.
+      await self._release(intent["id"])
+      raise PaymentFailedError(
+        "The card's bank asks the person to confirm this payment (3-D"
+        " Secure). An agent cannot do this step for the person.",
+        code="SHOPPER_ACTION_REQUIRED",
+      )
     if intent.get("status") != "requires_capture":
-      # `requires_action` is a card that wants 3-D Secure; this flow has no
-      # step for it, so it counts as not authorised.
       raise PaymentFailedError(
         f"The payment is {intent.get('status')}, not authorised",
         code="NOT_AUTHORISED",
       )
+    self._risk[intent["id"]] = risk
     return intent["id"]
+
+  async def _release(self, payment_id: str) -> None:
+    """Cancel a PaymentIntent that will not be used; never fail the caller.
+
+    The caller is already refusing the payment with a better reason than a
+    failed cancel could give, and an unconfirmed intent holds no money.
+    """
+    with contextlib.suppress(PaymentFailedError):
+      await self._call("POST", f"/payment_intents/{payment_id}/cancel")
+
+  async def assess(self, payment_id: str) -> dict[str, Any] | None:
+    """Return Radar's verdict on the charge, as read when it was locked."""
+    if payment_id not in self._risk:
+      intent = await self._call(
+        "GET", f"/payment_intents/{payment_id}?expand[]=latest_charge"
+      )
+      self._risk[payment_id] = _risk(intent.get("latest_charge"))
+    return self._risk[payment_id]
 
   async def capture(self, payment_id: str) -> None:
     """Take the authorised amount."""
@@ -260,6 +326,7 @@ class StripeRail:
         "exp_year": card.get("exp_year"),
       },
       "created": _iso(intent.get("created")),
+      "risk": _risk(intent.get("latest_charge")),
       "refunds": refunds,
       "url": (
         "https://dashboard.stripe.com/"
@@ -280,6 +347,21 @@ class StripeRail:
       {"payment_intent": payment_id, "amount": amount},
       **{"Idempotency-Key": f"refund-{payment_id}-{amount}"},
     )
+
+
+def _risk(charge: Any) -> dict[str, Any] | None:
+  """Read Radar's verdict from an expanded charge, or None if not expanded."""
+  if not isinstance(charge, dict):
+    return None
+  outcome = charge.get("outcome") or {}
+  return {
+    "level": outcome.get("risk_level") or "unknown",
+    # Only some Stripe plans give a score; then it is missing, not zero.
+    "score": outcome.get("risk_score"),
+    "outcome": outcome.get("type"),
+    "reason": outcome.get("reason"),
+    "seller_message": outcome.get("seller_message"),
+  }
 
 
 def _iso(epoch: int | None) -> str | None:

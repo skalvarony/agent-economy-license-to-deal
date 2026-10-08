@@ -1932,7 +1932,18 @@ class FakeStripe:
   """Enough of Stripe's API to pay, capture, cancel and refund, in memory.
 
   `pm_card_visa_chargeDeclined` declines, as Stripe's own test method does.
+  The fraud check (Radar) follows the test payment methods of Stripe's docs:
+  `pm_card_riskLevelElevated`, `pm_card_riskLevelHighest` and
+  `pm_card_radarBlock`; `pm_card_threeDSecure2Required` asks for 3-D Secure;
+  `pm_card_manualReview` is a made-up one for the manual review outcome.
   """
+
+  # What Radar says per payment method: (risk_level, risk_score, type).
+  RADAR = {
+    "pm_card_riskLevelElevated": ("elevated", 62, "authorized"),
+    "pm_card_riskLevelHighest": ("highest", 91, "authorized"),
+    "pm_card_manualReview": ("normal", None, "manual_review"),
+  }
 
   def __init__(self) -> None:
     """Start with no payments."""
@@ -1947,7 +1958,8 @@ class FakeStripe:
   @staticmethod
   def _plain(intent: dict) -> dict:
     """Return the intent unexpanded, as Stripe does: the charge is an id."""
-    return {**intent, "latest_charge": intent["latest_charge"]["id"]}
+    charge = intent["latest_charge"]
+    return {**intent, "latest_charge": charge and charge["id"]}
 
   def __call__(self, request: httpx.Request) -> httpx.Response:
     """Answer one request to api.stripe.com."""
@@ -1967,6 +1979,20 @@ class FakeStripe:
             }
           },
         )
+      if form["payment_method"] == "pm_card_radarBlock":
+        return httpx.Response(
+          402,
+          json={
+            "error": {
+              "code": "card_declined",
+              "decline_code": "fraudulent",
+              "message": "Your card was declined.",
+            }
+          },
+        )
+      level, score, kind = self.RADAR.get(
+        form["payment_method"], ("normal", None, "authorized")
+      )
       intent = {
         "id": f"pi_{len(self.intents) + 1}",
         "amount": int(form["amount"]),
@@ -1989,9 +2015,26 @@ class FakeStripe:
             }
           },
           "refunds": {"data": []},
+          "outcome": {
+            "type": kind,
+            "risk_level": level,
+            "risk_score": score,
+            "reason": "elevated_risk_level" if level == "elevated" else None,
+            "seller_message": "Payment complete.",
+            "network_status": "approved_by_network",
+          },
         },
       }
+      if form["payment_method"] == "pm_card_threeDSecure2Required":
+        # The bank wants the person to confirm: no charge exists yet.
+        intent["status"] = "requires_action"
+        intent["latest_charge"] = None
       self.intents[intent["id"]] = intent
+      # The shop asks for the charge to be expanded; Stripe then sends it
+      # whole instead of as an id.
+      expand = form.get("expand[]") == "latest_charge"
+      if expand or not intent["latest_charge"]:
+        return httpx.Response(200, json=intent)
       return httpx.Response(200, json=self._plain(intent))
     if path.startswith("/payment_intents/"):
       intent_id, _, action = path.removeprefix("/payment_intents/").partition(
@@ -2185,6 +2228,125 @@ class StripeRailTest(ShopTestCase):
     self.assertEqual(declines[0]["detail"]["total"], 9900)
     self.assertEqual(declines[0]["detail"]["channel"], "agent")
     self.assertIn("declined", declines[0]["detail"]["message"])
+
+  def _refused(self, token: str) -> dict:
+    """Pay with `token`, expect a 402 and return its first message."""
+    response = self._complete(self._create()["id"], token=token)
+    self.assertEqual(response.status_code, 402, response.text)
+    return response.json()["messages"][0]
+
+  def _declines(self) -> list[dict]:
+    return [
+      e
+      for e in self.client.get("/ledger", headers=SECRET).json()
+      if e["event"] == "PAYMENT_DECLINED"
+    ]
+
+  def test_a_normal_payment_keeps_stripes_fraud_check(self) -> None:
+    """The order stores what Radar said; a normal one needs no review."""
+    order = self._buy()
+
+    self.assertEqual(
+      order["payment"]["risk"],
+      {
+        "level": "normal",
+        "score": None,
+        "outcome": "authorized",
+        "reason": None,
+        "seller_message": "Payment complete.",
+        "review": False,
+      },
+    )
+    self.assertEqual(order["payment"]["status"], "captured")
+    self.assertNotIn("PAYMENT_RISK_REVIEW", self._events())
+    # The charge is expanded on the create call: no second call for it.
+    self.assertEqual(
+      self.stripe.calls,
+      ["POST /payment_intents", "POST /payment_intents/pi_1/capture"],
+    )
+
+  def test_the_console_endpoint_tells_the_risk(self) -> None:
+    """Reading the payment back from Stripe gives the same fraud check."""
+    order_id = self._buy()["id"]
+
+    info = self.client.get(f"/orders/{order_id}/payment", headers=SECRET).json()
+
+    self.assertEqual(info["risk"]["level"], "normal")
+    self.assertEqual(info["risk"]["outcome"], "authorized")
+
+  def test_elevated_risk_is_sold_and_flagged_for_review(self) -> None:
+    """Stripe lets it through; the order and the ledger ask for a look."""
+    response = self._complete(
+      self._create()["id"], token="pm_card_riskLevelElevated"
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    order = self._order(response.json()["order"]["id"])
+
+    self.assertEqual(order["payment"]["status"], "captured")
+    risk = order["payment"]["risk"]
+    self.assertEqual((risk["level"], risk["score"]), ("elevated", 62))
+    self.assertTrue(risk["review"])
+    self.assertEqual(self.stripe.intents["pi_1"]["status"], "succeeded")
+    self.assertIn("VOUCHER_ISSUED", self._events())
+    reviews = [
+      e
+      for e in self.client.get("/ledger", headers=SECRET).json()
+      if e["event"] == "PAYMENT_RISK_REVIEW"
+    ]
+    self.assertEqual(len(reviews), 1)
+    self.assertEqual(reviews[0]["payment_id"], "pi_1")
+    self.assertEqual(reviews[0]["detail"]["level"], "elevated")
+    self.assertEqual(reviews[0]["detail"]["order_id"], order["id"])
+
+  def test_a_manual_review_outcome_is_flagged_too(self) -> None:
+    """A normal risk level whose outcome is manual review still gets a look."""
+    response = self._complete(
+      self._create()["id"], token="pm_card_manualReview"
+    )
+    self.assertEqual(response.status_code, 200, response.text)
+    order = self._order(response.json()["order"]["id"])
+
+    self.assertEqual(order["payment"]["risk"]["level"], "normal")
+    self.assertTrue(order["payment"]["risk"]["review"])
+    self.assertIn("PAYMENT_RISK_REVIEW", self._events())
+
+  def test_highest_risk_is_cancelled_and_sells_nothing(self) -> None:
+    """The hold is released: no capture, no voucher, stock stays."""
+    message = self._refused("pm_card_riskLevelHighest")
+
+    self.assertEqual(message["code"], "RISK_HIGHEST")
+    self.assertEqual(self.stripe.intents["pi_1"]["status"], "canceled")
+    charge = self.stripe.intents["pi_1"]["latest_charge"]
+    self.assertEqual(charge["amount_captured"], 0)
+    self.assertNotIn("POST /payment_intents/pi_1/capture", self.stripe.calls)
+    self.assertEqual(self._stock("spa-60"), 2)
+    self.assertNotIn("VOUCHER_ISSUED", self._events())
+    self.assertNotIn("PAYMENT_CONFIRMED", self._events())
+    self.assertEqual(self._declines()[0]["detail"]["code"], "RISK_HIGHEST")
+
+  def test_a_payment_radar_blocked_sells_nothing(self) -> None:
+    """Stripe's own refusal for fraud says so, in plain words."""
+    message = self._refused("pm_card_radarBlock")
+
+    self.assertEqual(message["code"], "RISK_BLOCKED")
+    self.assertIn("fraud check blocked this payment", message["content"])
+    self.assertEqual(self._stock("spa-60"), 2)
+    self.assertNotIn("VOUCHER_ISSUED", self._events())
+    self.assertEqual(self._declines()[0]["detail"]["code"], "RISK_BLOCKED")
+
+  def test_three_d_secure_is_cancelled_with_a_clear_refusal(self) -> None:
+    """An agent cannot confirm for the person; the shop says so and stops."""
+    message = self._refused("pm_card_threeDSecure2Required")
+
+    self.assertEqual(message["code"], "SHOPPER_ACTION_REQUIRED")
+    self.assertIn("(3-D Secure)", message["content"])
+    self.assertIn("An agent cannot do this step", message["content"])
+    self.assertEqual(self.stripe.intents["pi_1"]["status"], "canceled")
+    self.assertEqual(self._stock("spa-60"), 2)
+    self.assertNotIn("VOUCHER_ISSUED", self._events())
+    self.assertEqual(
+      self._declines()[0]["detail"]["code"], "SHOPPER_ACTION_REQUIRED"
+    )
 
   def test_web_checkout_uses_stripes_card_form(self) -> None:
     """The page loads Stripe's fields; the pay form sends the PaymentMethod."""

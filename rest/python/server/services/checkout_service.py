@@ -843,11 +843,22 @@ class CheckoutService:
     # built, and given back if anything below fails.
     rail = payment_rail.get_rail()
     payment_id = None
+    risk = None
+    risk_review = False
     if total:
       try:
         payment_id = await rail.lock(
           total, checkout.currency, checkout.id, credential_token
         )
+        risk = await rail.assess(payment_id)
+        if risk and risk["level"] == "highest":
+          # Authorised, but Stripe's fraud check rates it the riskiest.
+          # Release the hold now: nothing is charged and no voucher exists.
+          await rail.refund(payment_id, total)
+          raise PaymentFailedError(
+            "Stripe's fraud check rated this payment the highest risk",
+            code="RISK_HIGHEST",
+          )
       except PaymentFailedError as refusal:
         declined(refusal)
         raise
@@ -996,6 +1007,13 @@ class CheckoutService:
         "coins": coins_spent,
         "coins_earned": coins_earned,
       }
+      if risk:
+        # Elevated risk or a manual review: the sale goes through, but the
+        # merchant should look at it, so the order says so.
+        risk_review = (
+          risk["level"] == "elevated" or risk["outcome"] == "manual_review"
+        )
+        order_data["payment"]["risk"] = {**risk, "review": risk_review}
       order_data["buyer"] = {
         "email": str(buyer_email).lower() if buyer_email else None,
         "full_name": getattr(checkout.buyer, "full_name", None),
@@ -1066,6 +1084,22 @@ class CheckoutService:
         "agent_context": agent_context,
       },
     )
+    if risk and risk_review:
+      ledger.emit(
+        "PAYMENT_RISK_REVIEW",
+        checkout_id=checkout.id,
+        payment_id=payment_id,
+        detail={
+          "order_id": order_id,
+          "level": risk["level"],
+          "score": risk["score"],
+          "outcome": risk["outcome"],
+          "reason": risk["reason"],
+          "seller_message": risk["seller_message"],
+          "channel": channel,
+          "agent": agent,
+        },
+      )
     if voucher_codes:
       ledger.emit(
         "VOUCHER_ISSUED",
