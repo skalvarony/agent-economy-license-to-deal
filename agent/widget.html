@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proposal</title>
+<style>
+:root { --text:#0d0d0d; --muted:#5d5d5d; --faint:#8f8f8f; --line:#e5e5e5; --bg:#fff; --soft:#f6f6f6; --ink:#0d0d0d; --on-ink:#fff; --good:#0a7a4b; --bad:#c8291d; }
+:root[data-theme="dark"] { --text:#ececec; --muted:#b4b4b4; --faint:#8e8e8e; --line:#383838; --bg:#212121; --soft:#2a2a2a; --ink:#fff; --on-ink:#0d0d0d; --good:#5fd39a; --bad:#ff7a70; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --text:#ececec; --muted:#b4b4b4; --faint:#8e8e8e; --line:#383838; --bg:#212121; --soft:#2a2a2a; --ink:#fff; --on-ink:#0d0d0d; --good:#5fd39a; --bad:#ff7a70; } }
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--text); background: var(--bg); font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Inter", sans-serif; -webkit-font-smoothing: antialiased; }
+.card { display: grid; grid-template-columns: 1fr; }
+.photo { width: 100%; aspect-ratio: 16 / 7; object-fit: cover; display: block; background: var(--soft); }
+.body { padding: 16px 18px 18px; display: grid; gap: 12px; }
+.tag { font-size: 12px; color: var(--muted); }
+.tag b { color: var(--text); font-weight: 600; }
+h1 { margin: 2px 0 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; }
+.seller { color: var(--muted); font-size: 13px; }
+.why { margin: 0; font-size: 13.5px; }
+dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+dt { color: var(--faint); }
+dd { margin: 0; }
+.sum { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 4px; font-size: 13.5px; }
+.sum div { display: flex; justify-content: space-between; gap: 10px; }
+.sum .total { font-weight: 600; font-size: 15px; border-top: 1px solid var(--line); padding-top: 6px; margin-top: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font: inherit; font-weight: 500; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+button.primary { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+button:disabled { opacity: .5; cursor: default; }
+.link { margin-left: auto; font-size: 13px; color: var(--muted); background: none; border: 0; padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; }
+.pledge { margin: 0; font-size: 12px; color: var(--faint); }
+.state { padding: 12px 14px; border-radius: 12px; background: var(--soft); font-size: 13.5px; display: grid; gap: 6px; }
+.state.good b { color: var(--good); }
+.state.bad b { color: var(--bad); }
+.codes code { font-size: 16px; font-weight: 700; letter-spacing: .1em; }
+.error { color: var(--bad); font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(() => {
+  "use strict";
+  const root = document.getElementById("root");
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const money = (cents) => `$${Math.floor(Math.abs(cents) / 100)}${Math.abs(cents) % 100 ? "." + String(Math.abs(cents) % 100).padStart(2, "0") : ""}`;
+  const signed = (cents) => (cents < 0 ? "-" : "") + money(cents);
+  const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  let data = null;      // the proposal, as propose_purchase returned it
+  let token = null;     // the card's token, from the result's _meta
+  let statusUrl = null; // where the agent tells the proposal's state
+  let hostName = "";    // the app this card is shown in, for the record
+  let busy = false;
+
+  function refund(c) {
+    if (!c || !c.refundability) return "";
+    if (c.refundability === "refundable") return "Full refund" + (c.refundable_until ? ` if you cancel by ${when(c.refundable_until)}` : "");
+    if (c.refundability === "partially_refundable") return "Partial refund if you cancel in time";
+    return "No refund once bought";
+  }
+
+  function render() {
+    if (!data) { root.innerHTML = '<div class="body"><p class="tag">Waiting for the proposal…</p></div>'; return; }
+    if (data.error) { root.innerHTML = `<div class="body"><p class="error">${esc(data.message || data.error)}</p></div>`; return; }
+    const open = data.status === "waiting_for_the_customer";
+    const s = data.service || {};
+    const rows = [];
+    if (s.window && s.window.not_before) rows.push(["When", `${when(s.window.not_before)} → ${when(s.window.not_after)}`]);
+    if (s.merchant) rows.push(["Where", `${s.merchant}${s.location ? " · " + s.location : ""}`]);
+    const r = refund(data.cancellation);
+    if (r) rows.push(["Cancellation", r]);
+    const totals = (data.totals || []).filter((t) => t.type !== "total");
+    root.innerHTML = `
+      <div class="card">
+        ${data.image ? `<img class="photo" src="${esc(data.image)}" alt="" onerror="this.remove()">` : ""}
+        <div class="body">
+          <div>
+            <p class="tag">${open ? "Proposed by your agent · <b>waiting for your approval</b>" : "Proposal"}</p>
+            <h1>${esc(data.title)}</h1>
+            <p class="seller">${esc(data.shop_name || "")}</p>
+          </div>
+          ${data.reason ? `<p class="why">${esc(data.reason)}</p>` : ""}
+          ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
+          <div class="sum">
+            ${totals.map((t) => `<div><span>${esc(t.label)}</span><span>${signed(t.amount)}</span></div>`).join("")}
+            <div class="total"><span>Your card pays</span><span>${money(data.total || 0)}</span></div>
+          </div>
+          <div id="state" ${open ? "" : 'class="state"'}></div>
+          ${open ? `
+          <div class="actions">
+            <button class="primary" id="approve" ${token ? "" : "disabled"}>Approve ${money(data.total || 0)}</button>
+            <button id="decline" ${token ? "" : "disabled"}>Not this one</button>
+            <button class="link" id="open">Open in my agent</button>
+          </div>
+          <p class="pledge">${token ? "Your agent can't pay without your approval, and it covers this total only." : "This card can't approve here; use “Open in my agent”."}</p>` : `
+          <div class="actions"><button class="link" id="open">Open in my agent</button></div>`}
+        </div>
+      </div>`;
+    if (!open && data.status !== "waiting_for_the_customer") showState(data);
+    $("#approve")?.addEventListener("click", () => act("approve_from_card"));
+    $("#decline")?.addEventListener("click", () => act("decline_from_card"));
+    $("#open")?.addEventListener("click", () => host?.openLink(data.page_url));
+  }
+
+  // Hosts wrap a tool's answer differently: the result itself, {result},
+  // or only the text block with the JSON inside. Find the payload.
+  function unwrap(r, depth = 0) {
+    if (r == null || depth > 4) return null;
+    if (typeof r === "string") { try { return unwrap(JSON.parse(r), depth + 1); } catch { return null; } }
+    if (r.structuredContent) return r.structuredContent;
+    if (r.result) return unwrap(r.result, depth + 1);
+    if (Array.isArray(r.content)) {
+      const text = r.content.find((c) => c.type === "text")?.text;
+      const parsed = unwrap(text, depth + 1);
+      if (parsed) return parsed;
+    }
+    return typeof r === "object" ? r : null;
+  }
+
+  function showState(view) {
+    const box = $("#state");
+    if (!box || !view || view.status === "waiting_for_the_customer") return;
+    const good = view.status === "bought";
+    const bad = ["declined", "failed", "changed"].includes(view.status);
+    const label = { bought: "Bought, at the total you approved.", declined: "You turned this down. Nothing was paid.", approved: "Approved; paying the shop…", failed: "The shop refused the purchase. Nothing was paid.", changed: "The shop changed the total after you approved. Nothing was paid. Your agent has a new proposal on its page.", withdrawn: "Replaced by a newer proposal." }[view.status] || (view.status ? String(view.status) : "Done. See your agent's page for the outcome.");
+    box.className = `state ${good ? "good" : bad ? "bad" : ""}`;
+    box.innerHTML = `<b>${esc(label)}</b>` +
+      (view.receipt ? `<div class="codes">Voucher: ${(view.receipt.codes || []).map((c) => `<code>${esc(c)}</code>`).join(" ")}</div>` : "") +
+      (view.agent_said ? `<div>${esc(view.agent_said)}</div>` : "");
+    for (const b of document.querySelectorAll("#approve, #decline")) b.remove();
+    $(".pledge")?.remove();
+  }
+
+  // What this card remembers across the host rebuilding it.
+  function remember(state) {
+    try { window.openai?.setWidgetState?.(state); } catch { /* not every host */ }
+  }
+  function remembered() {
+    try { return window.openai?.widgetState || null; } catch { return null; }
+  }
+
+  let syncing = false;
+  let syncedOnce = false;
+  async function syncWithAgent() {
+    if (!statusUrl || !data || syncing) return;
+    const mem = remembered();
+    const clicked = mem && mem.proposal_id === data.proposal_id && mem.acted;
+    if (decided(data)) return;
+    if (!clicked && syncedOnce) return;
+    syncedOnce = true;
+    syncing = true;
+    try {
+      if (clicked) {
+        const box = $("#state");
+        if (box) { box.className = "state"; box.innerHTML = `<b>${mem.acted === "approve_from_card" ? "Approving… paying the shop." : "Declining…"}</b>`; }
+        for (const b of document.querySelectorAll("#approve, #decline")) b.disabled = true;
+      }
+      const view = clicked ? await awaitOutcome() : await readOutcome();
+      if (view && view.status && view.status !== "pending") {
+        data = { ...data, ...view };
+        showState(data);
+        token = null;
+        lastDrawn = JSON.stringify([data, false]);
+      } else if (clicked) {
+        const box = $("#state");
+        if (box) { box.className = "state bad"; box.innerHTML = "<b>Still waiting for the shop.</b> <span>See your agent's page.</span>"; }
+      }
+    } finally {
+      syncing = false;
+    }
+  }
+
+  async function readOutcome() {
+    try { return await (await fetch(statusUrl, { cache: "no-store" })).json(); } catch { return null; }
+  }
+
+  // Ask the agent itself how the proposal stands, until it is decided.
+  // Some hosts never resolve the tool call's promise; this does not depend
+  // on it.
+  async function awaitOutcome(deadlineMs = 45000) {
+    if (!statusUrl) return null;
+    const until = Date.now() + deadlineMs;
+    while (Date.now() < until) {
+      try {
+        const view = await (await fetch(statusUrl, { cache: "no-store" })).json();
+        if (view && view.status && !["pending", "approved"].includes(view.status)) return view;
+      } catch { /* try again */ }
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+    return null;
+  }
+
+  async function act(name) {
+    if (busy || !token || !data || !host) return;
+    busy = true;
+    for (const b of document.querySelectorAll("#approve, #decline")) b.disabled = true;
+    const box = $("#state");
+    if (box) { box.className = "state"; box.innerHTML = `<b>${name === "approve_from_card" ? "Approving… paying the shop." : "Declining…"}</b>`; }
+    remember({ proposal_id: data.proposal_id, acted: name, at: Date.now() });
+    try {
+      const call = host.callTool(name, { proposal_id: data.proposal_id, token, host: hostName }).then(unwrap).catch((error) => ({ error: "host", message: String(error?.message || error) }));
+      // Whichever answers first with an outcome: the host, or the agent.
+      const settled = await Promise.race([
+        call.then((view) => (view && !view.error ? view : new Promise(() => {}))),
+        awaitOutcome(),
+      ]);
+      let view = settled || (await call);
+      if (!view) throw new Error("No answer from the host or the agent. Check your agent's page.");
+      if (view.error && view.error !== "host") throw new Error(view.message || view.error);
+      if (view.error === "host") {
+        const late = await awaitOutcome(10000);
+        if (!late) throw new Error(view.message);
+        view = late;
+      }
+      data = { ...data, ...view };
+      showState(data);
+      token = null;
+      lastDrawn = JSON.stringify([data, false]);
+    } catch (error) {
+      if (box) { box.className = "state bad"; box.innerHTML = `<b>Couldn't do that:</b> <span>${esc(error.message || error)}</span>`; }
+      for (const b of document.querySelectorAll("#approve, #decline")) b.disabled = false;
+    } finally {
+      busy = false;
+    }
+  }
+
+  // What a tool result carries for the card: the proposal, and the token in
+  // _meta (which the model never sees).
+  const decided = (d) => d && d.status && d.status !== "waiting_for_the_customer" && d.status !== "pending";
+  let lastDrawn = "";
+
+  function receive(result) {
+    if (!result) return;
+    const out = result.structuredContent || result;
+    if (out && typeof out === "object") {
+      const same = data && out.proposal_id === data.proposal_id;
+      if (same && decided(data) && !decided(out)) {
+        // The host is re-sending the original proposal (ChatGPT does, over
+        // and over). The outcome is known: keep it.
+      } else if (same && !out.totals) {
+        // A decision comes without the proposal's details: add it to them.
+        data = { ...data, ...out };
+      } else {
+        data = out;
+      }
+    }
+    const meta = result._meta || {};
+    if (meta.card_token) token = meta.card_token;
+    if (meta.status_url) statusUrl = meta.status_url;
+    // Redraw only when something changed, or the frame flickers.
+    const key = JSON.stringify([data, !!token]);
+    if (key !== lastDrawn) { lastDrawn = key; render(); }
+    // A host may rebuild this card from the original proposal after a click
+    // (ChatGPT does). Ask the agent how things really stand, and if a click
+    // was already made here, show that instead of the buttons.
+    syncWithAgent();
+    for (const img of document.images) img.addEventListener("load", () => window.dispatchEvent(new Event("resize")), { once: true });
+  }
+
+  function theme(name) {
+    if (name === "light" || name === "dark") document.documentElement.dataset.theme = name;
+  }
+
+  // ---- Two hosts, one card.
+  // ChatGPT exposes window.openai; every other MCP Apps host (Claude, Claude
+  // Desktop, VS Code…) speaks the standard JSON-RPC over postMessage.
+
+  function openaiHost() {
+    const o = window.openai;
+    hostName = "ChatGPT";
+    const take = () => receive({ structuredContent: o.toolOutput, _meta: o.toolResponseMetadata || {} });
+    take();
+    window.addEventListener("openai:set_globals", take);
+    theme(o.theme);
+    return {
+      callTool: (name, args) => o.callTool(name, args),
+      openLink: (href) => (o.openExternal ? o.openExternal({ href }) : window.open(href, "_blank", "noopener")),
+    };
+  }
+
+  function mcpHost() {
+    let nextId = 1;
+    const pending = new Map();
+    const send = (message) => window.parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
+    const request = (method, params) => new Promise((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, { resolve, reject });
+      send({ id, method, params });
+    });
+    window.addEventListener("message", (event) => {
+      const m = event.data;
+      if (!m || m.jsonrpc !== "2.0") return;
+      if (m.id != null && m.method == null) {
+        const waiting = pending.get(m.id);
+        if (!waiting) return;
+        pending.delete(m.id);
+        if (m.error) waiting.reject(new Error(m.error.message || "The host refused")); else waiting.resolve(m.result);
+        return;
+      }
+      if (m.method === "ui/notifications/tool-result") receive(m.params);
+      else if (m.method === "ui/notifications/host-context-changed") theme(m.params?.theme);
+      else if (m.method === "ui/resource-teardown" && m.id != null) send({ id: m.id, result: {} });
+    });
+    // Tell the host how tall the card is, so it fits the frame to it. Only
+    // once the handshake is done: hosts drop what arrives before that.
+    let ready = false;
+    const report = () => {
+      if (!ready) return;
+      send({ method: "ui/notifications/size-changed", params: { width: document.documentElement.scrollWidth, height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, 120) } });
+    };
+    new ResizeObserver(report).observe(document.body);
+    window.addEventListener("load", report);
+    request("ui/initialize", {
+      protocolVersion: "2026-01-26",
+      clientInfo: { name: "shopping-agent-card", version: "1.0" },
+      capabilities: {},
+      appCapabilities: { availableDisplayModes: ["inline"] },
+    }).then((init) => {
+      theme(init?.hostContext?.theme);
+      const base = init?.hostInfo?.name || "Claude";
+      hostName = init?.hostContext?.platform === "desktop" && !/desktop/i.test(base) ? `${base} Desktop` : base;
+      send({ method: "ui/notifications/initialized", params: {} });
+      ready = true;
+      report();
+      setTimeout(report, 300);
+      setTimeout(report, 1500);  // Once the photo has arrived.
+    }).catch(() => {});
+    return {
+      callTool: (name, args) => request("tools/call", { name, arguments: args }),
+      openLink: (href) => request("ui/open-link", { url: href }).catch(() => window.open(href, "_blank", "noopener")),
+    };
+  }
+
+  // In Claude and other MCP Apps hosts, the official client does the
+  // handshake; if it can't be loaded, the hand-written protocol above does.
+  const SDK = "https://unpkg.com/@modelcontextprotocol/ext-apps@1.7.5/dist/src/app-with-deps.js";
+  let host = null;
+  function sdkHost(App) {
+    const app = new App({ name: "shopping-agent-card", version: "1.0" }, {}, { autoResize: true });
+    app.ontoolresult = (result) => receive(result);
+    app.onhostcontextchanged = (ctx) => theme(ctx?.theme);
+    const connected = app.connect().then(() => {
+      const ctx = app.getHostContext?.() || {};
+      theme(ctx.theme);
+      // Claude says who it is in the handshake; add where it runs.
+      const info = app.hostInfo || app.getHostInfo?.() || {};
+      const base = info.name || "Claude";
+      hostName = ctx.platform === "desktop" && !/desktop/i.test(base) ? `${base} Desktop` : base;
+    }).catch(() => {});
+    return {
+      callTool: async (name, args) => {
+        await connected;
+        return app.callServerTool({ name, arguments: args });
+      },
+      openLink: (href) => app.sendOpenLink({ url: href }).catch(() => window.open(href, "_blank", "noopener")),
+    };
+  }
+  if (window.openai) {
+    host = openaiHost();
+    render();
+  } else {
+    render();
+    import(SDK).then((m) => { host = sdkHost(m.App); }).catch(() => { host = mcpHost(); });
+  }
+})();
+</script>
+</body>
+</html>

@@ -136,6 +136,26 @@ photos, the price or the terms first, full or brief detail, and the language
 the agent writes in (English or Spanish; `texts.py` for the scripted brain
 and the session, an instruction for the model).
 
+**Another brain can use the agent as its tools.** `POST /mcp/{key}` serves
+the agent's tools over MCP (JSON-RPC over HTTP): ChatGPT, Claude Code or any
+assistant that speaks it connects and gets `search_deals`, `read_wallets`,
+`recall`, `remember` and `propose_purchase` (plus `search` and `fetch`, as
+ChatGPT's connectors expect). The external brain thinks; the agent signs,
+keeps the memory and the rules, and holds the proposal until the person
+approves it on an interface the agent owns, stamped with who proposed it. In
+ChatGPT and in Claude (web and desktop) the proposal also arrives as a card
+drawn inside the chat: `propose_purchase` names the `ui://` resource
+`agent/widget.html`, which speaks both ChatGPT's Apps SDK bridge and the MCP
+Apps standard (the server negotiates the client's protocol version and
+declares the `io.modelcontextprotocol/ui` extension, which Claude requires).
+The card's Approve and Decline call `approve_from_card` / `decline_from_card`
+with a one-time token the result carries in `_meta`, which reaches the card
+but never the model; the record says the yes came "by card:ChatGPT" or
+"card:Claude". Clients without a UI (Claude Code) get a link to the proposal
+instead. There is no tool that pays, for any brain. Proposals that wait
+survive a restart. The key is a secret in the address, made on the first
+start (`mcp_key` in the run directory).
+
 Two brains: a scripted stand-in (fixed rules), or a language model over the
 OpenAI chat API (`agent/model_brain.py`) when `OPENAI_API_KEY` is set;
 `AGENT_MODEL` names it, `OPENAI_BASE_URL` moves it to another provider,
@@ -171,7 +191,8 @@ the merchant; the agent's decisions until a model is connected.
   `visitor.py`; `routes/catalog.py`, `storefront.py`, `web_checkout.py`,
   `account.py`, `voucher.py`, `wallet.py` with `routes/assets/`;
 - `agent/`: `session.py` (conversation, tools, approval), `brain.py` and
-  `model_brain.py`, `shops.py` (UCP calls), `signing.py`, `memory.py`.
+  `model_brain.py`, `shops.py` (UCP calls), `signing.py`, `memory.py`, `mcp.py` (the tool
+  server) with `widget.html` (the card).
 - `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).
