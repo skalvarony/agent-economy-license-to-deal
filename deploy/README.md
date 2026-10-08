@@ -1,7 +1,7 @@
-# Putting the shops and the agents on one machine
+# Putting the shops, the agents and their console on one machine
 
-One small VM runs the three shops, one agent per person and Caddy, which
-gives each its HTTPS hostname. Everything is in `docker-compose.yml`; the
+One small VM runs the three shops, one agent per person, the shops' console
+and Caddy, which gives each its HTTPS hostname. Everything is in `docker-compose.yml`; the
 secrets are in a `.env` file that stays on the machine.
 
 ```
@@ -10,6 +10,7 @@ https://a.<domain>      Dusk Deals
 https://b.<domain>      Praha Pass
 https://c.<domain>      Dawn Saver
 https://<agent host>    one agent per person, on its own name; sign-in page
+https://admin.<domain>  the shops' console; sign-in page, team account
 ```
 
 ## 1. A machine
@@ -37,8 +38,8 @@ domain, [DuckDNS](https://www.duckdns.org) gives a free one:
 2. `DOMAIN=licensetodeal.duckdns.org` in `.env`. With a bought domain as well,
    put the DuckDNS name in `ALT_DOMAIN`, and both keep answering.
 
-With a bought domain: `A` records for the root, `a`, `b` and `c`, to the VM's
-IP, and `DOMAIN=yourdomain.com`.
+With a bought domain: `A` records for the root, `a`, `b`, `c` and `admin`, to
+the VM's IP, and `DOMAIN=yourdomain.com`.
 
 Each agent gets its own name (free DuckDNS names do: `ltd-agent-alvaro`,
 `ltd-agent-david`, `ltd-agent-emmanouil`), pointed at the same IP and set
@@ -61,12 +62,13 @@ shell history or the repository):
 
 - `SIMULATION_SECRET`: `openssl rand -hex 24`.
 - `DEMO_PASSWORD`: the demo account's password in every shop.
-- The team's sign-in for the agents' pages: `AGENT_USER` and
+- The team's sign-in for the console and the agents' pages: `AGENT_USER` and
   `AGENT_PASSWORD_HASH`, the hash from
   `docker run --rm caddy:2-alpine caddy hash-password --plaintext '…'`,
   with every `$` written as `$$`, as Compose needs. The sign-in is the app's
-  own (`shared/teamlogin.py`, copied into the agent image): a page at
-  `/login`, a session cookie for a week, `/logout`. Each agent opens with its
+  own (`shared/teamlogin.py`, copied into the console and agent images): a
+  page at `/login`, a session cookie for a week, `/logout`. The team account
+  opens the console; each agent opens with its
   person's own login if one is given in `LOGIN_USERS_<NAME>` ("user:hash"),
   else with the team's. An agent's `/profile.json` and `/mcp/<key>` stay
   open: shops fetch the one, the person's ChatGPT the other.
@@ -123,7 +125,7 @@ agent across restarts.
 |---|---|
 | Deploy a change | `git pull && docker compose up -d --build` |
 | Deploy a change to the Caddyfile | the same, then `docker compose up -d --force-recreate caddy` (a bind-mounted file keeps its old copy until the container is recreated) |
-| Logs of one service | `docker compose logs -f shop-a` (or `shop-b`, `shop-c`, `agent-alvaro`, `agent-david`, `agent-emmanouil`, `caddy`) |
+| Logs of one service | `docker compose logs -f shop-a` (or `shop-b`, `shop-c`, `agent-alvaro`, `agent-david`, `agent-emmanouil`, `console`, `caddy`) |
 | Change who may sign in | edit `.env`, then `docker compose up -d` (sessions already open stay valid until they expire) |
 | Reset the shops to their catalogues | `RESEED=1 docker compose up -d shop-a shop-b shop-c`, then `docker compose up -d` to drop the flag |
 | Change a secret | edit `.env`, then `docker compose up -d` |

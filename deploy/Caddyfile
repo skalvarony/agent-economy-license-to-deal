@@ -22,6 +22,11 @@ c.{$DOMAIN}, c.{$ALT_DOMAIN} {
 	reverse_proxy shop-c:8080
 }
 
+# The shops' console: the merchant's side. The app asks the team to sign in.
+admin.{$DOMAIN}, admin.{$ALT_DOMAIN} {
+	reverse_proxy console:8195
+}
+
 # Each person's agent, on its own name. The app asks the person to sign in;
 # its profile (shops fetch it) and its MCP address (secret in the path) are
 # the only open paths.

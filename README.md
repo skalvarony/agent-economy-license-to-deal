@@ -12,6 +12,7 @@ left and why.
 | B, Praha Pass | :8182 | https://b.licensetodeal.app | Food and activities, 5% back |
 | C, Dawn Saver | :8183 | https://c.licensetodeal.app | Wellness, cheaper, non-refundable, no coins |
 | The agents | :8190 | `ltd-agent-alvaro`, `ltd-agent-david`, `ltd-agent-emmanouil` `.duckdns.org` | One per person, on its own name, behind a password |
+| The console | :8195 | https://admin.licensetodeal.app | The shops' side, same password |
 
 ## Run
 
@@ -20,12 +21,13 @@ Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 ```shell
 scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
 scripts/agent.sh start       # http://localhost:8190
+scripts/console.sh start     # http://localhost:8195
 python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking fee
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
 Tests: `cd rest/python/server && uv run pytest` (340), `cd agent && uv run
-pytest` (40). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
+pytest` (40), `cd console && uv run pytest` (16). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
 running): `npm install && npx playwright install chromium` once, then
 `npm test` (five shop flows) and `npm run test:agent` (three agent flows).
 They use exact checks and need no model. Each shop also ships as a container
@@ -199,6 +201,22 @@ its own key and record, on a name apart from the shops' domain: the shops
 verify a key published somewhere they don't control, as they would in real
 life.
 
+## The console
+
+One page for the merchant's side of the three shops, with a shop selector
+(`console/`). Orders: every purchase with who paid, what, how much on the
+card and in coins, which door (agent with the signature's outcome, or web
+with its hints) and the voucher's state. Opening one shows the facts, the
+merchant's actions (mark redeemed, not honoured, cancel, refund with a
+reason), the shop's events behind it, and, for an agent order, the agent's
+side: the approval findings and the whole conversation that led to the
+purchase. Other sections: the shop's events, the code inventory, customers
+(wallet lookup, grant coins, open an account, set a password) and the demo
+controls (the surprise fee). It calls the shops with the merchant secret and
+the agents for their records (each order names the agent that placed it, by
+its profile URL; `AGENT_URLS` maps profiles to addresses); it stores nothing
+itself.
+
 ## Real and simulated
 
 Real: the UCP protocol, signature checks, code pools and stock, voucher
@@ -225,7 +243,9 @@ the merchant; the agent's decisions until a model is connected.
 - `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).
-- `scripts/`: start and stop the shops; the smoke test.
+- `console/`: the shops' console, `app.py` and `static/`.
+- `scripts/`: start and stop the shops, the agent and the console; the smoke
+  test.
 - `deploy/`: Dockerfiles are in each app; here the Compose file, Caddyfile,
   `.env.example`, the front page and the steps.
 - `tests-e2e/`: browser tests, the only Node code in the repo.

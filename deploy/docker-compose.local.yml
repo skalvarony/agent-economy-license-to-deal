@@ -27,6 +27,9 @@ services:
     environment:
       <<: *local-agent-env
       AGENT_URL: http://agent-emmanouil:8190
+  console:
+    environment:
+      AGENT_URLS: http://agent-alvaro:8190/profile.json=http://agent-alvaro:8190,http://agent-david:8190/profile.json=http://agent-david:8190,http://agent-emmanouil:8190/profile.json=http://agent-emmanouil:8190
   shop-a:
     environment:
       ALLOW_INSECURE_PROFILES: "1"

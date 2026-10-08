@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shops console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230d0d0d'/%3E%3Crect x='8' y='9' width='16' height='3' fill='%23fff'/%3E%3Crect x='8' y='15' width='16' height='3' fill='%23fff'/%3E%3Crect x='8' y='21' width='10' height='3' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preload" href="/static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/console.css">
+<script src="/static/console.js" defer></script>
+</head>
+<body>
+<aside class="side">
+  <p class="brand" data-name>Shops console</p>
+  <h2>Shop</h2>
+  <div class="shops" id="shops" role="tablist" aria-label="Shop"></div>
+  <h2>Sections</h2>
+  <nav class="nav" id="nav">
+    <button type="button" data-section="overview" class="on">Overview</button>
+    <button type="button" data-section="orders">Orders <span class="badge" id="new-badge" hidden></span></button>
+    <button type="button" data-section="events">Events</button>
+    <button type="button" data-section="inventory">Inventory</button>
+    <button type="button" data-section="customers" data-one-shop>Customers</button>
+    <button type="button" data-section="demo" data-one-shop>Demo controls</button>
+  </nav>
+  <form class="who" method="post" action="/logout" id="who" hidden>
+    <span>Signed in as <b data-user></b></span>
+    <button type="submit" class="quiet">Sign out</button>
+  </form>
+  <p class="foot">The merchant's side of the three shops. Every action here
+    is what a real merchant or platform would do: cancel, redeem, refund,
+    grant coins, open accounts.</p>
+</aside>
+
+<main>
+  <header class="bar">
+    <h1><span data-shop-name>Shop</span> <span class="muted" data-section-name>Overview</span></h1>
+    <span class="status" id="status" role="status"></span>
+  </header>
+
+  <section class="section" data-section="overview">
+    <div class="tools">
+      <span class="count" id="stats-note"></span>
+      <button type="button" class="quiet" data-refresh>Refresh</button>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="panels">
+      <div class="panel wide">
+        <h3>Last 14 days <span class="muted">card revenue per day; refunded in red</span></h3>
+        <div class="chart" id="chart"></div>
+      </div>
+      <div class="panel"><h3>Doors</h3><dl class="facts" id="doors"></dl></div>
+      <div class="panel"><h3>Vouchers</h3><dl class="facts" id="redemption"></dl></div>
+      <div class="panel"><h3>Payments</h3><dl class="facts" id="payments"></dl></div>
+    </div>
+  </section>
+
+  <section class="section" data-section="orders" hidden>
+    <div class="tools">
+      <input type="search" id="order-search" placeholder="Filter by buyer, item, order id, code or door">
+      <span class="count" id="order-count"></span>
+      <button type="button" class="quiet" data-export>Export CSV</button>
+      <button type="button" class="quiet" data-refresh>Refresh</button>
+    </div>
+    <div class="chips" id="chips">
+      <div class="chip-group" data-filter="attention">
+        <button type="button" class="chip on" data-value="all">Everything</button>
+        <button type="button" class="chip" data-value="todo">To handle</button>
+        <button type="button" class="chip" data-value="new">New</button>
+        <button type="button" class="chip" data-value="handled">Handled</button>
+      </div>
+      <div class="chip-group" data-filter="state">
+        <button type="button" class="chip on" data-value="all">All</button>
+        <button type="button" class="chip" data-value="paid">Paid</button>
+        <button type="button" class="chip" data-value="ready">Ready to use</button>
+        <button type="button" class="chip" data-value="used">Used</button>
+        <button type="button" class="chip" data-value="cancelled">Cancelled</button>
+        <button type="button" class="chip" data-value="refunded">Refunded</button>
+      </div>
+      <div class="chip-group" data-filter="door">
+        <button type="button" class="chip on" data-value="all">Any door</button>
+        <button type="button" class="chip" data-value="agent">Agent</button>
+        <button type="button" class="chip" data-value="web">Web</button>
+        <button type="button" class="chip" data-value="suspect">Web, suspect</button>
+      </div>
+      <div class="chip-group" data-filter="rail" id="rail-chips">
+        <button type="button" class="chip on" data-value="all">Any rail</button>
+      </div>
+    </div>
+    <div class="split">
+      <div class="table-wrap">
+        <table class="orders" id="orders">
+          <thead><tr><th class="flag" aria-label="Attention"></th><th>When</th><th data-col="shop" hidden><span class="fold">Shop</span></th><th>Buyer</th><th>Bought</th><th class="num">Paid</th><th>Door</th><th>State</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <aside class="detail" id="detail" hidden></aside>
+    </div>
+  </section>
+
+  <section class="section" data-section="events" hidden>
+    <div class="tools">
+      <input type="search" id="event-search" placeholder="Filter events">
+      <span class="count" id="event-count"></span>
+      <button type="button" class="quiet" data-refresh>Refresh</button>
+    </div>
+    <table class="events" id="events">
+      <thead><tr><th>When</th><th>Shop</th><th>Event</th><th>Checkout</th><th>Detail</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="section" data-section="inventory" hidden>
+    <div class="tools"><span class="count" id="inventory-count"></span><button type="button" class="quiet" data-refresh>Refresh</button></div>
+    <table class="inventory" id="inventory">
+      <thead><tr><th>Option</th><th class="num">Available</th><th class="num">Assigned</th><th class="num">Redeemed</th><th class="num">Void</th><th class="num">Total</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="section" data-section="customers" hidden>
+    <div class="cards">
+      <form class="card" id="wallet-form">
+        <h3>Wallet</h3>
+        <label>Email <input name="email" type="email" required placeholder="someone@example.com"></label>
+        <div class="row"><button class="primary" type="submit">Look up</button></div>
+        <div id="wallet-result"></div>
+      </form>
+      <form class="card" id="grant-form">
+        <h3>Grant coins</h3>
+        <label>Email <input name="email" type="email" required></label>
+        <label>Coins <input name="coins" type="number" min="1" value="10" required></label>
+        <div class="row"><button class="primary" type="submit">Grant</button></div>
+      </form>
+      <form class="card" id="account-form">
+        <h3>Open an account</h3>
+        <p class="muted">People can't register themselves; the shop opens accounts.</p>
+        <label>Full name <input name="full_name" required></label>
+        <label>Email <input name="email" type="email" required></label>
+        <label>Password <input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+        <div class="row"><button class="primary" type="submit">Create</button></div>
+      </form>
+      <form class="card" id="password-form">
+        <h3>Set a password</h3>
+        <label>Email <input name="email" type="email" required></label>
+        <label>New password <input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+        <div class="row"><button class="primary" type="submit">Set</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="section" data-section="demo" hidden>
+    <div class="cards">
+      <form class="card" id="fee-form">
+        <h3>Surprise fee</h3>
+        <p class="muted">Adds a booking fee to every checkout of this shop from now on. An agent that already showed a total to its customer gets <code>409 requires_consent</code> and has to ask again. Set 0 to remove it.</p>
+        <label>Fee, in cents <input name="amount" type="number" min="0" step="1" value="2500" required></label>
+        <div class="row">
+          <button class="primary" type="submit">Set the fee</button>
+          <button class="secondary" type="button" data-clear-fee>Remove it</button>
+        </div>
+      </form>
+      <div class="card">
+        <h3>Scenario crib</h3>
+        <ol class="crib">
+          <li><b>Normal purchase:</b> ask the agent for a spa day; approve; see the order here, door "Agent, signature verified", and the payment in Stripe.</li>
+          <li><b>Surprise fee:</b> set the fee while a proposal waits; approve; the agent stops and asks again. Remove the fee after.</li>
+          <li><b>Fake bot:</b> <code>scripts/prove_door.py</code> or a curl without a signature: 401.</li>
+          <li><b>Merchant cancels:</b> open the order, Cancel, then Refund; the code goes void, the coins come back, Stripe shows the refund.</li>
+          <li><b>"I never bought this":</b> open the order; the agent's side shows the approval, the conversation and the findings.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>
