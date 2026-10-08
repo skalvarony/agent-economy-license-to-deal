@@ -22,7 +22,8 @@ python3 scripts/smoke.py     # 24 live checks: buys, cancels, refunds, booking f
 scripts/shops.sh stop
 ```
 
-Tests: `cd rest/python/server && uv run pytest` (340). Browser tests in
+Tests: `cd rest/python/server && uv run pytest` (340), `cd agent && uv run
+pytest` (40). Browser tests in
 `tests-e2e/` (Node 22.12+, shops running): `npm install && npx playwright
 install chromium` once, then `npm test` (five shop flows). They use exact
 checks and need no model. Each shop also ships as a container (`docker build
@@ -152,8 +153,13 @@ The card's Approve and Decline call `approve_from_card` / `decline_from_card`
 with a one-time token the result carries in `_meta`, which reaches the card
 but never the model; the record says the yes came "by card:ChatGPT" or
 "card:Claude". Clients without a UI (Claude Code) get a link to the proposal
-instead. There is no tool that pays, for any brain. Proposals that wait
-survive a restart. The key is a secret in the address, made on the first
+instead. **Telegram** is another channel of the same agent
+(`agent/telegram.py`): one bot per agent, the chat linked once with a
+one-time code; a message there is a turn of the conversation, every proposal
+arrives as a card with Approve / Not this one, and a tap is recorded as
+`method: telegram`. Approving happens only on an interface the agent owns:
+those cards, Telegram, voice later. There is no tool that pays, for any
+brain. Proposals that wait survive a restart. The key is a secret in the address, made on the first
 start (`mcp_key` in the run directory).
 
 Two brains: a scripted stand-in (fixed rules), or a language model over the
