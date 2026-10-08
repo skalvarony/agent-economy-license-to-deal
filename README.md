@@ -106,6 +106,50 @@ checkout; `POST /wallets/grant`, `GET /wallets/{email}`; `GET /inventory`,
 `POST /accounts` and `PUT /accounts/{email}/password`.
 
 
+## The agent
+
+The person asks ("a spa day for two, refundable, under $120"). The agent
+searches the three shops, reads the person's coins in each, and proposes one
+deal: what, why, what it turned down and why, and the exact total with the
+coins/card split.
+
+1. The brain (`agent/brain.py`) has three tools, `search_deals`,
+   `read_wallets` and `propose_purchase`. None of them pays.
+2. `propose_purchase` opens a checkout in the shop, with the total the shop
+   will charge.
+3. The person's approval is handled by code outside the brain
+   (`agent/session.py`): it pays that checkout, once. A `409` from the shop
+   stops it; the agent fetches the new total and asks again.
+4. The receipt records the voucher and compares charged with approved.
+
+The agent is the person's: it keeps a **memory** in its run directory
+(`memory.json`), separate from any model. Three parts: a profile (city, who
+they buy for, a note), preferences the agent learns from what the person says
+(the brain's `remember` tool; the person can drop any of them), and **hard
+rules** only the person sets: a maximum total, refundable deals only,
+categories to avoid. The brain reads them with `recall` and sees them at the
+start of every conversation, but the rules are enforced in code:
+`propose_purchase` refuses a deal that breaks one before any checkout is
+opened, whatever the brain asked. The memory's **presentation** says how a
+proposal is laid out: the best one or the three best to pick from, the
+photos, the price or the terms first, full or brief detail, and the language
+the agent writes in (English or Spanish; `texts.py` for the scripted brain
+and the session, an instruction for the model).
+
+Two brains: a scripted stand-in (fixed rules), or a language model over the
+OpenAI chat API (`agent/model_brain.py`) when `OPENAI_API_KEY` is set;
+`AGENT_MODEL` names it, `OPENAI_BASE_URL` moves it to another provider,
+`AGENT_BRAIN=scripted` forces the stand-in.
+
+The agent signs every request with an ES256 key it keeps in its run directory
+(`agent/signing.py`) and publishes as its profile. It keeps a journal
+(`journal.jsonl`: every message, tool call, proposal and receipt) and writes
+each approval and what came of it to `approvals.jsonl`, its own record of
+what the person agreed to. Settings (customer, test card, shops) are in
+`agent/agent.json`; `AGENT_NAME`, `AGENT_CUSTOMER_NAME` and
+`AGENT_CUSTOMER_EMAIL` say whose agent an instance is, and `SHOP_<ID>_URL`
+and `SHOP_<ID>_PUBLIC_URL` override a shop's addresses.
+
 ## Real and simulated
 
 Real: the UCP protocol, signature checks, code pools and stock, voucher
@@ -126,6 +170,8 @@ the merchant; the agent's decisions until a model is connected.
   `payment_rail.py`, `ledger.py`, `account_service.py`, `coin_service.py`,
   `visitor.py`; `routes/catalog.py`, `storefront.py`, `web_checkout.py`,
   `account.py`, `voucher.py`, `wallet.py` with `routes/assets/`;
+- `agent/`: `session.py` (conversation, tools, approval), `brain.py` and
+  `model_brain.py`, `shops.py` (UCP calls), `signing.py`, `memory.py`.
 - `shops/<a|b|c>/`: each shop's catalogue as CSV (`deals`, `options`,
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).
