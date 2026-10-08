@@ -1,0 +1,18 @@
+# Try the whole stack on a laptop, without a domain:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml \
+#     --env-file .env.local up -d --build
+#
+# With DOMAIN=localhost, Caddy signs the certificates itself (curl -k, or
+# trust its CA). Agents on the laptop publish their profile over plain http,
+# which the shops accept only with this flag.
+services:
+  shop-a:
+    environment:
+      ALLOW_INSECURE_PROFILES: "1"
+  shop-b:
+    environment:
+      ALLOW_INSECURE_PROFILES: "1"
+  shop-c:
+    environment:
+      ALLOW_INSECURE_PROFILES: "1"

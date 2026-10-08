@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>License to Deal</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="description" content="License to Deal: local-experience vouchers that an AI agent can buy for you, with your approval, from marketplaces that verify the agent.">
+<style>
+  :root { color-scheme: light dark; --text: #0d0d0d; --muted: #5d5d5d; --line: #e5e5e5; --bg: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --text: #ececec; --muted: #b4b4b4; --line: #383838; --bg: #212121; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 24px 80px; }
+  h1 { font-size: 40px; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 12px; }
+  .lead { font-size: 20px; color: var(--muted); margin: 0 0 40px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 40px 0 12px; }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  li a { display: flex; justify-content: space-between; gap: 16px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; color: inherit; text-decoration: none; }
+  li a:hover { border-color: var(--text); }
+  li a span { color: var(--muted); }
+  p { margin: 0 0 14px; }
+  footer { margin-top: 56px; color: var(--muted); font-size: 14px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 15px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>License to Deal</h1>
+  <p class="lead">Vouchers for local experiences in Prague, sold through marketplaces that an AI agent can buy from on your behalf, and only with your approval.</p>
+
+  <p>Three marketplaces sell spa days, tastings and activities. Each one speaks the
+    <a href="https://ucp.dev">Universal Commerce Protocol</a>, so a personal agent can
+    search them, compare, and check out, while the marketplace verifies who the agent is
+    and that its customer approved the exact total. People can also buy directly.</p>
+
+  <h2>The marketplaces</h2>
+  <ul>
+    <li><a href="https://a.licensetodeal.app">Dusk Deals <span>wellness · refundable · 10% back in coins</span></a></li>
+    <li><a href="https://b.licensetodeal.app">Praha Pass <span>food and activities · 5% back</span></a></li>
+    <li><a href="https://c.licensetodeal.app">Dawn Saver <span>wellness, cheaper · non-refundable</span></a></li>
+  </ul>
+
+  <h2>For agents</h2>
+  <p>Each marketplace publishes its profile at <code>/.well-known/ucp</code>. Requests must be
+    signed; a total that changes after the customer approved it is never charged.</p>
+
+  <footer>License to Deal is a team entry at the Agents 0.0.7 hackathon, Prague,
+    8 to 9 October 2026. Everything here is a demo: the shops, their
+    catalogues, prices, ratings and reviews are made up, and payments run in
+    Stripe's test mode, so no real money moves and no real card is ever
+    charged. Accounts are created by the team for the team. Nothing is sold.</footer>
+</main>
+</body>
+</html>

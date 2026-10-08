@@ -1,0 +1,23 @@
+# One certificate per hostname, all automatic. ALT_DOMAIN is an older name
+# that keeps working beside DOMAIN (set it to DOMAIN to have none).
+{
+	email {$ACME_EMAIL}
+}
+
+# The front door: a public page that names the project and links the shops.
+{$DOMAIN}, {$ALT_DOMAIN} {
+	root * /srv/landing
+	file_server
+}
+
+a.{$DOMAIN}, a.{$ALT_DOMAIN} {
+	reverse_proxy shop-a:8080
+}
+
+b.{$DOMAIN}, b.{$ALT_DOMAIN} {
+	reverse_proxy shop-b:8080
+}
+
+c.{$DOMAIN}, c.{$ALT_DOMAIN} {
+	reverse_proxy shop-c:8080
+}

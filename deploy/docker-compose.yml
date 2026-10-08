@@ -1,0 +1,63 @@
+# The three shops and Caddy (HTTPS) on one machine.
+#
+#   cp .env.example .env     # then fill it in
+#   docker compose up -d --build
+#
+# The shops share one volume, so their ledger stays one file. Caddy gets
+# and renews the certificates for <DOMAIN>, a., b. and c.
+
+x-shop: &shop
+  build:
+    context: ../rest/python/server
+  restart: unless-stopped
+  environment: &shop-env
+    SIMULATION_SECRET: ${SIMULATION_SECRET:?set SIMULATION_SECRET in .env}
+    DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+    REQUIRE_SIGNATURES: ${REQUIRE_SIGNATURES:-1}
+    ALLOW_INSECURE_PROFILES: ${ALLOW_INSECURE_PROFILES:-0}
+    SECURE_COOKIES: ${SECURE_COOKIES:-1}
+    RESEED: ${RESEED:-0}
+    PAYMENT_RAIL: ${PAYMENT_RAIL:-mock}
+    STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+  volumes:
+    - shops:/data
+    - ../shops:/shops:ro
+
+services:
+  shop-a:
+    <<: *shop
+    environment:
+      <<: *shop-env
+      SHOP: a
+  shop-b:
+    <<: *shop
+    environment:
+      <<: *shop-env
+      SHOP: b
+  shop-c:
+    <<: *shop
+    environment:
+      <<: *shop-env
+      SHOP: c
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ALT_DOMAIN: ${ALT_DOMAIN:-${DOMAIN}}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./landing:/srv/landing:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  shops:
+  caddy_data:
+  caddy_config:

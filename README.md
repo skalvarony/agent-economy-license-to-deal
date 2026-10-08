@@ -6,11 +6,11 @@ sample server with voucher selling added, started with its own catalogue; the
 agent (`agent/`) only talks to the shops over UCP. `PLAN.md` says what is
 left and why.
 
-| Shop | Local | Sells |
-|---|---|---|
-| A, Dusk Deals | :8181 | Wellness, refundable, 10% back in coins |
-| B, Praha Pass | :8182 | Food and activities, 5% back |
-| C, Dawn Saver | :8183 | Wellness, cheaper, non-refundable, no coins |
+| Shop | Local | Live | Sells |
+|---|---|---|---|
+| A, Dusk Deals | :8181 | https://a.licensetodeal.app | Wellness, refundable, 10% back in coins |
+| B, Praha Pass | :8182 | https://b.licensetodeal.app | Food and activities, 5% back |
+| C, Dawn Saver | :8183 | https://c.licensetodeal.app | Wellness, cheaper, non-refundable, no coins |
 
 ## Run
 
@@ -25,6 +25,9 @@ scripts/shops.sh stop
 Tests: `cd rest/python/server && uv run pytest` (245). Each shop also ships
 as a container (`docker build rest/python/server`); `SHOP`, `SIMULATION_SECRET`
 and the other knobs are listed at the top of `docker-entrypoint.sh`.
+
+`deploy/` runs it all on one VM with Docker Compose and Caddy; its `README.md`
+has the steps. Secrets live only in the VM's `deploy/.env`.
 
 ## What a shop sells
 
@@ -100,3 +103,5 @@ the merchant; the agent's decisions until a model is connected.
   `codes`, `discounts`, `reviews`, `users`, `wallets`), `shop.json` for its
   look, `images/` (credits in `shops/CREDITS.md`).
 - `scripts/`: start and stop the shops; the smoke test.
+- `deploy/`: Dockerfiles are in each app; here the Compose file, Caddyfile,
+  `.env.example`, the front page and the steps.
