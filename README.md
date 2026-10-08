@@ -204,7 +204,9 @@ page shows the full address under "What it knows about you".
 Two brains, and the page says which one decides: a scripted stand-in (fixed
 rules), or a language model over the OpenAI chat API (`agent/model_brain.py`)
 when `OPENAI_API_KEY` is set; `AGENT_MODEL` names it, `OPENAI_BASE_URL` moves
-it to another provider, `AGENT_BRAIN=scripted` forces the stand-in. The model
+it to another provider (OpenRouter: `https://openrouter.ai/api/v1` with its
+model ids), `AGENT_MAX_TOKENS` caps an answer, `AGENT_BRAIN=scripted`
+forces the stand-in. The model
 brain is tested against a fake of the API and has not run against the real
 one yet.
 

@@ -17,6 +17,8 @@ from brain import BrainError, Call, Step, Tool
 import httpx
 
 DEFAULT_MODEL = "gpt-5-mini"
+# Enough for a few tool calls and three sentences; never a whole window.
+DEFAULT_MAX_TOKENS = 1500
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 TIMEOUT_SECONDS = 90
 # A rate limit or a hiccup on the API's side gets one more try, after a
@@ -88,16 +90,20 @@ class ModelBrain:
     base_url: str = DEFAULT_BASE_URL,
     http: httpx.AsyncClient | None = None,
     reasoning: str | None = "low",
+    max_tokens: int | None = DEFAULT_MAX_TOKENS,
   ) -> None:
     """Keep the key and the model; `http` is for tests.
 
     `reasoning` is the effort asked of a reasoning model (GPT-5 family,
     o-series): "minimal", "low", "medium" or "high". Low keeps a proposal
     at a few seconds; other models don't take the parameter and don't get
-    it. None sends nothing.
+    it. None sends nothing. `max_tokens` caps each answer: the agent's
+    answers are short, and providers that bill up front (OpenRouter)
+    refuse a request that could run to the model's whole output window.
     """
     self.name = model
     self._model = model
+    self._max_tokens = max_tokens
     self._url = base_url.rstrip("/") + "/chat/completions"
     self._key = api_key
     self._customer_name = customer_name
@@ -128,6 +134,8 @@ class ModelBrain:
     }
     if self._reasoning:
       body["reasoning_effort"] = self._reasoning
+    if self._max_tokens:
+      body["max_tokens"] = self._max_tokens
     response = await self._post(body)
     if response.status_code >= 400:
       raise BrainError(
