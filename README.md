@@ -25,13 +25,12 @@ scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
 Tests: `cd rest/python/server && uv run pytest` (340), `cd agent && uv run
-pytest` (40). Browser tests in
-`tests-e2e/` (Node 22.12+, shops and agent
-running): `npm install && npx playwright
-install chromium` once, then `npm test` (five shop flows). They use exact
-checks and need no model. Each shop also ships as a container (`docker build
-rest/python/server`); `SHOP`, `SIMULATION_SECRET` and the other knobs are
-listed at the top of `docker-entrypoint.sh`.
+pytest` (40). Browser tests in `tests-e2e/` (Node 22.12+, shops and agent
+running): `npm install && npx playwright install chromium` once, then
+`npm test` (five shop flows) and `npm run test:agent` (three agent flows).
+They use exact checks and need no model. Each shop also ships as a container
+(`docker build rest/python/server`); `SHOP`, `SIMULATION_SECRET` and the
+other knobs are listed at the top of `docker-entrypoint.sh`.
 
 `deploy/` runs it all on one VM with Docker Compose and Caddy; its `README.md`
 has the steps. Secrets live only in the VM's `deploy/.env`.
