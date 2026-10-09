@@ -396,36 +396,72 @@ def test_a_bookable_deal_is_not_proposed_without_a_slot(session, shops):
   assert not shops[0].checkouts
 
 
-def test_the_person_moves_a_purchase_through_the_agent(session, shops):
+def test_a_move_is_proposed_and_done_only_on_the_person_s_yes(session, shops):
   run(session.say("a sauna evening for two, Saturday at 18:00"))
   run(session.approve(proposal_of(session)["id"]))
   events = run(session.say("move my sauna evening to Saturday at 19:00"))
+  # Proposed, not done: the shop was not asked to move anything.
+  assert shops[0].moves == []
+  change = proposal_of(session)
+  assert change["kind"] == "reschedule"
+  assert change["change"] == {
+    "from": "2026-10-10T18:00:00+02:00",
+    "to": "2026-10-10T19:00:00+02:00",
+  }
+  assert events[-1]["text"].startswith(
+    "I can move Private Sauna Evening · 60min at Shop A to Sat 10 Oct, 19:00."
+  )
+  # The yes, on the page: now it moves.
+  events = run(session.approve(change["id"]))
   assert shops[0].moves == [("order_co_1", "2026-10-10T19:00:00+02:00")]
+  assert change["status"] == "done"
   assert events[-1]["text"] == (
     "Done. Private Sauna Evening · 60min at Shop A is now booked for"
     " Sat 10 Oct, 19:00."
   )
   rows = asyncio.run(session.list_purchases())
   assert rows[0]["booking"]["starts_at"] == "2026-10-10T19:00:00+02:00"
-  # A full slot: the calendar shows it full, so nothing is asked of the shop.
+  assert "moved Private Sauna Evening · 60min to 2026-10-10T19:00:00+02:00" in (
+    " ".join(session.history_words())
+  )
+  # A full slot: the calendar shows it full, so nothing is proposed.
   shops[0].full.add("2026-10-10T20:00:00+02:00")
   events = run(session.say("change it to Saturday at 20:00"))
   assert "has no free slot at that time on Sat 10 Oct" in events[-1]["text"]
-  assert len(shops[0].moves) == 1
-  # A slot that fills up between the look and the move: the shop says no.
-  shops[0].full.add("2026-10-10T21:00:00+02:00")
+  assert not [p for p in session.proposals.values() if p["status"] == "pending"]
+  # A slot that fills up between the proposal and the yes: the shop says no.
   shops[0].availability = lambda *a, **k: FakeShop.availability(FakeShop("a", "A", []), *a, **k)
-  events = run(session.say("change it to Saturday at 21:00"))
+  run(session.say("change it to Saturday at 21:00"))
+  late = proposal_of(session)
+  shops[0].full.add("2026-10-10T21:00:00+02:00")
+  events = run(session.approve(late["id"]))
+  assert late["status"] == "failed"
   assert "wouldn't do it" in events[-1]["text"]
   assert len(shops[0].moves) == 1
 
 
-def test_the_person_cancels_a_purchase_through_the_agent(session, shops):
+def test_a_cancellation_is_proposed_and_done_only_on_the_person_s_yes(session, shops):
   run(session.say(REQUEST))
   run(session.approve(proposal_of(session)["id"]))
   events = run(session.say("cancel my spa day"))
+  assert shops[0].cancelled == []
+  change = proposal_of(session)
+  assert change["kind"] == "cancel"
+  assert change["change"] == {"refund": 5900, "coins": 40}
+  assert events[-1]["text"].startswith(
+    "I can cancel Spa Day for Two · 3h at Shop A: $59 would go back to your"
+    " card and 40 coins to your wallet."
+  )
+  # Turned down: nothing happens.
+  run(session.decline(change["id"]))
+  assert change["status"] == "declined" and shops[0].cancelled == []
+  # Asked again and approved, from Telegram say: now it is cancelled.
+  run(session.say("cancel my spa day"))
+  events = run(session.approve(proposal_of(session)["id"], method="telegram"))
   assert shops[0].cancelled == ["order_co_1"]
-  assert events[-1]["text"] == (
+  # The wallets are read again after the refund; the words come before.
+  said = next(e for e in reversed(events) if e["type"] == "agent")
+  assert said["text"] == (
     "Done. I cancelled Spa Day for Two · 3h at Shop A: $59 goes back to"
     " your card and 40 coins to your wallet."
   )
@@ -446,9 +482,23 @@ def test_a_change_names_the_purchase_when_several_are_open(session, shops):
   run(session.approve(proposal_of(session)["id"]))
   events = run(session.say("cancel it"))
   assert events[-1]["text"].startswith("Which purchase do you mean? You have:")
-  assert not shops[0].cancelled
+  assert not [p for p in session.proposals.values() if p["status"] == "pending"]
   run(session.say("cancel the sauna"))
-  assert shops[0].cancelled == ["order_co_2"]
+  change = proposal_of(session)
+  assert change["kind"] == "cancel" and change["order_id"] == "order_co_2"
+  assert shops[0].cancelled == []
+
+
+def test_the_brain_cannot_change_a_purchase_by_itself(session, shops):
+  """Whatever the brain says, a change waits for the person."""
+  run(session.say(REQUEST))
+  run(session.approve(proposal_of(session)["id"]))
+  answer = asyncio.run(session.cancel_purchase("a", "order_co_1"))
+  assert answer["status"] == "waiting_for_the_customer"
+  assert shops[0].cancelled == []
+  answer = asyncio.run(session.reschedule_purchase("a", "order_co_1", "2026-10-10T19:00:00+02:00"))
+  assert answer["error"] == "no_booking"
+  assert asyncio.run(session.cancel_purchase("a", "nope"))["error"] == "unknown_order"
 
 
 def test_money():

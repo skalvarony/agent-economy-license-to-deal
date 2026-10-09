@@ -143,10 +143,11 @@
   // ---- A proposal: what the agent would buy, waiting for a yes or a no
 
   const MARKS = { chosen: "✓", rejected: "✕", alternative: "·" };
-  const SHORT = { approved: "Paying…", bought: "Bought", declined: "Declined", withdrawn: "Replaced", changed: "Total changed", failed: "Refused" };
+  const SHORT = { approved: "Paying…", bought: "Bought", done: "Done", declined: "Declined", withdrawn: "Replaced", changed: "Total changed", failed: "Refused" };
   const STATES = {
     approved: "Approved. Paying the shop…",
     bought: "Bought, at the total you approved.",
+    done: "Done, as you approved.",
     declined: "You turned this down. Nothing was paid.",
     withdrawn: "Replaced by a newer proposal. Nothing was paid.",
     changed: "The shop changed the total after you approved. Nothing was paid.",
@@ -231,7 +232,36 @@
       })));
   }
 
+  // A change to a purchase, waiting for a yes: move the visit, or cancel.
+  function changeCard(proposal, into = null) {
+    const cancel = proposal.kind === "cancel";
+    const c = proposal.change ?? {};
+    const booking = proposal.service?.booking;
+    const head = el("div", { class: "head plain" },
+      el("div", {},
+        el("span", { class: "tag", "data-tag": true, text: "Waiting for your approval" }),
+        proposal.via && el("span", { class: "via", text: `Proposed by ${proposal.via}${proposal.proposed_at ? " · " + when(proposal.proposed_at) : ""}` }),
+        el("h3", { text: `${cancel ? "Cancel" : "Move"} ${proposal.title}` }),
+        el("p", { class: "seller" }, dot(proposal.shop), ` ${proposal.shop_name}`),
+        proposal.reason && el("p", { class: "why", text: proposal.reason })));
+    const rows = cancel
+      ? [["Back to your card", money(c.refund ?? 0)], c.coins ? ["Back to your wallet", coinsText(c.coins)] : null, booking?.starts_at ? ["Booked for", bookedText(booking)] : null]
+      : [["From", moment(c.from)], ["To", moment(c.to)]];
+    const card = el("article", { class: "card proposal change", "data-proposal": proposal.id },
+      head,
+      el("dl", { class: "terms" }, rows.filter(Boolean).map(([k, v]) => [el("dt", { text: k }), el("dd", { text: v })])),
+      el("div", { class: "pay" },
+        el("div", { class: "actions" },
+          el("button", { class: "primary", type: "button", "data-approve": true, text: cancel ? "Yes, cancel and refund" : "Yes, move it", onclick: () => run(`/api/proposals/${proposal.id}/approve`) }),
+          el("button", { class: "secondary", type: "button", "data-decline": true, text: "Not this one", onclick: () => run(`/api/proposals/${proposal.id}/decline`) })),
+        el("p", { class: "pledge", text: cancel ? "Nothing is cancelled until you approve." : "Nothing changes until you approve." })));
+    if (into) into.append(card); else add(card);
+    if (proposal.status !== "pending") proposalStatus(proposal.id, proposal.status);
+    return card;
+  }
+
   function proposalCard(proposal, into = null) {
+    if (proposal.kind === "cancel" || proposal.kind === "reschedule") return changeCard(proposal, into);
     const service = proposal.service ?? {};
     const earns = proposal.coins?.earns;
     const show = proposal.presentation ?? {};
@@ -585,7 +615,7 @@
     $("#decided-title").hidden = !data.decided.length;
     $("#decided").replaceChildren(...data.decided.map((p) => el("li", { class: p.status },
       el("span", { class: "state-dot" }),
-      el("span", { class: "what" }, el("b", { text: p.title }), el("small", {}, `${p.shop_name} · ${money(p.total)} · proposed by `, sourceBadge(p.via ? sourceOf(p.via) : "agent"), p.decided_via ? [" · decided on ", channelBadge(p.decided_via)] : null)),
+      el("span", { class: "what" }, el("b", { text: `${p.kind === "cancel" ? "Cancel " : p.kind === "reschedule" ? "Move " : ""}${p.title}` }), el("small", {}, `${p.shop_name} · ${p.kind === "cancel" ? "refund" : p.kind === "reschedule" ? "new time" : money(p.total)} · proposed by `, sourceBadge(p.via ? sourceOf(p.via) : "agent"), p.decided_via ? [" · decided on ", channelBadge(p.decided_via)] : null)),
       el("span", { class: "verdict", text: SHORT[p.status] ?? p.status }))));
   }
 

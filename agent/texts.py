@@ -87,6 +87,20 @@ TEXTS: dict[str, dict[str, str]] = {
     "es": "Hecho. He cancelado {title} en {shop}: {back} vuelve a tu"
     " tarjeta{coins}.",
   },
+  "move_proposed": {
+    "en": "I can move {title} at {shop} to {when}. Approve it and I'll do"
+    " it; nothing changes until you do.",
+    "es": "Puedo mover {title} en {shop} al {when}. Apruébalo y lo hago; no"
+    " cambia nada hasta que apruebes.",
+  },
+  "cancel_proposed": {
+    "en": "I can cancel {title} at {shop}: {back} would go back to your"
+    " card{coins}. Approve it and I'll do it; nothing is cancelled until"
+    " you do.",
+    "es": "Puedo cancelar {title} en {shop}: {back} volvería a tu"
+    " tarjeta{coins}. Apruébalo y lo hago; no se cancela nada hasta que"
+    " apruebes.",
+  },
   "cannot_change": {
     "en": "{shop} wouldn't do it: {message} Nothing changed.",
     "es": "{shop} no lo ha permitido: {message} No ha cambiado nada.",

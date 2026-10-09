@@ -321,6 +321,24 @@ class Telegram:
     """Return the card's text, in Telegram's HTML."""
     e = html.escape
     service = proposal.get("service") or {}
+    kind = proposal.get("kind")
+    if kind in ("cancel", "reschedule"):
+      change = proposal.get("change") or {}
+      lines = [
+        f"<b>{'Cancel' if kind == 'cancel' else 'Move'} {e(proposal['title'])}</b>",
+        e(proposal["shop_name"]),
+      ]
+      if kind == "cancel":
+        lines.append(f"Back to your card: {_money(change.get('refund') or 0)}")
+        if change.get("coins"):
+          lines.append(f"Back to your wallet: {change['coins']} coins")
+      else:
+        lines.append(f"From: {e(_when(change.get('from')))}")
+        lines.append(f"To: {e(_when(change.get('to')))}")
+      lines.append("<i>Nothing changes until you approve.</i>")
+      if outcome:
+        lines += ["", f"<b>{e(outcome)}</b>"]
+      return "\n".join(lines)
     window = service.get("window") or {}
     cancel = proposal.get("cancellation") or {}
     lines = [
@@ -363,7 +381,10 @@ class Telegram:
       "inline_keyboard": [
         [
           {
-            "text": f"Approve {_money(proposal['total'])}",
+            "text": {
+              "cancel": "Yes, cancel and refund",
+              "reschedule": "Yes, move it",
+            }.get(proposal.get("kind"), f"Approve {_money(proposal['total'])}"),
             "callback_data": f"approve:{proposal['id']}",
           },
           {
@@ -410,6 +431,7 @@ class Telegram:
   OUTCOMES = {
     "approved": "Approved. Paying the shop…",
     "bought": "Bought, at the total you approved.",
+    "done": "Done, as you approved.",
     "declined": "You turned this down. Nothing was paid.",
     "withdrawn": "Replaced by a newer proposal. Nothing was paid.",
     "changed": (

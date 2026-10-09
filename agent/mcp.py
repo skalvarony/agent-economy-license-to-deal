@@ -67,6 +67,9 @@ SDK_ORIGIN = "https://unpkg.com"
 TOKEN_SECONDS = 24 * 3600
 # The tools only the card may call, never the model.
 CARD_TOOLS = ("approve_from_card", "decline_from_card")
+# The tools whose result is a proposal waiting for the person: a purchase,
+# or a change to one. Each gets the card and its one-time token.
+PROPOSING_TOOLS = ("propose_purchase", "reschedule_purchase", "cancel_purchase")
 
 
 def load_key(path) -> str:
@@ -107,7 +110,7 @@ def tool_specs(session: Session) -> list[dict[str, Any]]:
       "name": tool.name,
       "description": tool.description,
       "inputSchema": tool.parameters,
-      **({"_meta": _card_binding()} if tool.name == "propose_purchase" else {}),
+      **({"_meta": _card_binding()} if tool.name in PROPOSING_TOOLS else {}),
     }
     for tool in session.tools
   ]
@@ -338,9 +341,10 @@ async def call_tool(
   # Tell the brain where the person approves: on the card, or on the page.
   meta = None
   if (
-    name == "propose_purchase"
+    name in PROPOSING_TOOLS
     and isinstance(result, dict)
     and not result.get("error")
+    and result.get("proposal_id")
   ):
     result["page_url"] = f"{page_url}/approvals/{result['proposal_id']}"
     result["approval"] = (

@@ -737,11 +737,11 @@ class ScriptedBrain:
         )
       return Step(
         text=say(
-          "moved",
+          "move_proposed",
           lang,
           title=done["title"],
           shop=done["shop_name"],
-          when=moment(done["booking"]["starts_at"]),
+          when=moment(done["change"]["to"]),
         )
       )
     if "cancel_purchase" not in results:
@@ -763,16 +763,17 @@ class ScriptedBrain:
           message=done["message"],
         )
       )
+    change = done.get("change") or {}
     coins = (
-      f" and {done['coins']} coins to your wallet" if done.get("coins") else ""
+      f" and {change['coins']} coins to your wallet" if change.get("coins") else ""
     )
     return Step(
       text=say(
-        "cancelled_purchase",
+        "cancel_proposed",
         lang,
         title=done["title"],
         shop=done["shop_name"],
-        back=money(done.get("refunded") or 0),
+        back=money(change.get("refund") or 0),
         coins=coins,
       )
     )

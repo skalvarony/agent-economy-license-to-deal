@@ -67,7 +67,18 @@ button:disabled { opacity: .5; cursor: default; }
     if (data.error) { root.innerHTML = `<div class="body"><p class="error">${esc(data.message || data.error)}</p></div>`; return; }
     const open = data.status === "waiting_for_the_customer";
     const s = data.service || {};
+    const change = data.kind === "cancel" || data.kind === "reschedule";
     const rows = [];
+    if (change) {
+      const c = data.change || {};
+      if (data.kind === "cancel") {
+        rows.push(["Back to your card", money(c.refund || 0)]);
+        if (c.coins) rows.push(["Back to your wallet", `${c.coins} coins`]);
+        if (s.booking && s.booking.starts_at) rows.push(["Booked for", when(s.booking.starts_at)]);
+      } else {
+        rows.push(["From", when(c.from)], ["To", when(c.to)]);
+      }
+    }
     if (s.booking && s.booking.starts_at) rows.push(["When", when(s.booking.starts_at)]);
     else if (s.window && s.window.not_before) rows.push(["When", `${when(s.window.not_before)} → ${when(s.window.not_after)}`]);
     if (s.merchant) rows.push(["Where", `${s.merchant}${s.location ? " · " + s.location : ""}`]);
@@ -80,23 +91,23 @@ button:disabled { opacity: .5; cursor: default; }
         <div class="body">
           <div>
             <p class="tag">${open ? "Proposed by your agent · <b>waiting for your approval</b>" : "Proposal"}</p>
-            <h1>${esc(data.title)}</h1>
+            <h1>${change ? (data.kind === "cancel" ? "Cancel " : "Move ") : ""}${esc(data.title)}</h1>
             <p class="seller">${esc(data.shop_name || "")}</p>
           </div>
           ${data.reason ? `<p class="why">${esc(data.reason)}</p>` : ""}
           ${rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}
-          <div class="sum">
+          ${change ? "" : `<div class="sum">
             ${totals.map((t) => `<div><span>${esc(t.label)}</span><span>${signed(t.amount)}</span></div>`).join("")}
             <div class="total"><span>Your card pays</span><span>${money(data.total || 0)}</span></div>
-          </div>
+          </div>`}
           <div id="state" ${open ? "" : 'class="state"'}></div>
           ${open ? `
           <div class="actions">
-            <button class="primary" id="approve" ${token ? "" : "disabled"}>Approve ${money(data.total || 0)}</button>
+            <button class="primary" id="approve" ${token ? "" : "disabled"}>${change ? (data.kind === "cancel" ? "Yes, cancel and refund" : "Yes, move it") : `Approve ${money(data.total || 0)}`}</button>
             <button id="decline" ${token ? "" : "disabled"}>Not this one</button>
             <button class="link" id="open">Open in my agent</button>
           </div>
-          <p class="pledge">${token ? "Your agent can't pay without your approval, and it covers this total only." : "This card can't approve here; use “Open in my agent”."}</p>` : `
+          <p class="pledge">${token ? (change ? "Nothing changes until you approve." : "Your agent can't pay without your approval, and it covers this total only.") : "This card can't approve here; use “Open in my agent”."}</p>` : `
           <div class="actions"><button class="link" id="open">Open in my agent</button></div>`}
         </div>
       </div>`;
@@ -126,7 +137,7 @@ button:disabled { opacity: .5; cursor: default; }
     if (!box || !view || view.status === "waiting_for_the_customer") return;
     const good = view.status === "bought";
     const bad = ["declined", "failed", "changed"].includes(view.status);
-    const label = { bought: "Bought, at the total you approved.", declined: "You turned this down. Nothing was paid.", approved: "Approved; paying the shop…", failed: "The shop refused the purchase. Nothing was paid.", changed: "The shop changed the total after you approved. Nothing was paid. Your agent has a new proposal on its page.", withdrawn: "Replaced by a newer proposal." }[view.status] || (view.status ? String(view.status) : "Done. See your agent's page for the outcome.");
+    const label = { bought: "Bought, at the total you approved.", done: "Done, as you approved.", declined: "You turned this down. Nothing was paid.", approved: "Approved; paying the shop…", failed: "The shop refused the purchase. Nothing was paid.", changed: "The shop changed the total after you approved. Nothing was paid. Your agent has a new proposal on its page.", withdrawn: "Replaced by a newer proposal." }[view.status] || (view.status ? String(view.status) : "Done. See your agent's page for the outcome.");
     box.className = `state ${good ? "good" : bad ? "bad" : ""}`;
     box.innerHTML = `<b>${esc(label)}</b>` +
       (view.receipt ? `<div class="codes">Voucher: ${(view.receipt.codes || []).map((c) => `<code>${esc(c)}</code>`).join(" ")}</div>` : "") +

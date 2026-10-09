@@ -91,6 +91,12 @@ def summarize(shop: Shop, product: dict[str, Any]) -> dict[str, Any]:
   }
 
 
+def _moment(iso: str) -> str:
+  """Format an ISO date and time: Sat 10 Oct, 12:00."""
+  at = datetime.datetime.fromisoformat(iso)
+  return f"{at:%a} {at.day} {at:%b}, {at:%H:%M}"
+
+
 def _refundable(row: dict[str, Any]) -> tuple[bool, str]:
   """Whether a purchase can still be cancelled for a refund, and why not."""
   if row.get("error"):
@@ -614,9 +620,10 @@ class Session:
       Tool(
         name="reschedule_purchase",
         description=(
-          "Move a purchase's visit to another open slot of the same deal,"
-          " when the customer asks for it. Check the deal's availability"
-          " first and pass the slot's starts_at. Nothing is paid."
+          "Propose moving a purchase's visit to another open slot of the"
+          " same deal, when the customer asks for it. Check the deal's"
+          " availability first and pass the slot's starts_at. Nothing moves"
+          " until the customer approves on their page or card."
         ),
         parameters={
           "type": "object",
@@ -632,10 +639,12 @@ class Session:
       Tool(
         name="cancel_purchase",
         description=(
-          "Cancel a purchase for a refund, when the customer asks for it."
-          " The shop allows it while the deal is refundable, its refund"
-          " deadline has not passed and the voucher is unused; the card"
-          " payment and the coins go back the way they came."
+          "Propose cancelling a purchase for a refund, when the customer"
+          " asks for it. The shop allows it while the deal is refundable,"
+          " its refund deadline has not passed and the voucher is unused;"
+          " the card payment and the coins go back the way they came."
+          " Nothing is cancelled until the customer approves on their page"
+          " or card."
         ),
         parameters={
           "type": "object",
@@ -769,54 +778,169 @@ class Session:
   async def reschedule_purchase(
     self, shop: str, order_id: str, starts_at: str
   ) -> dict[str, Any]:
-    """Move a purchase's visit, as the person could on the shop's page."""
-    seller = self.shops[shop]
-    order = await seller.reschedule(order_id, starts_at)
-    line = (order.get("line_items") or [{}])[0]
-    booking = (line.get("service") or {}).get("booking") or {}
-    self._record_change(
-      "rescheduled", seller, order_id, line, starts_at=booking.get("starts_at")
+    """Put a move of a purchase's visit in front of the person.
+
+    Like a purchase, a change is proposed and only the person's approval,
+    on an interface the agent owns, applies it. Nothing moves here.
+    """
+    row, problem = await self._live_purchase(shop, order_id)
+    if problem:
+      return problem
+    booking = (row.get("service") or {}).get("booking") or {}
+    if not booking.get("starts_at"):
+      return {
+        "error": "no_booking",
+        "message": f"{row['title']} has no date and time to move.",
+      }
+    proposal = self._propose_change(
+      "reschedule",
+      row,
+      change={"from": booking["starts_at"], "to": starts_at},
+      reason=f"Move the visit to {starts_at}.",
     )
-    self._note(
-      f"{line.get('item', {}).get('title', 'The purchase')} at {seller.name}"
-      f" was moved to {booking.get('starts_at')}."
-    )
-    return {
-      "ok": True,
-      "order_id": order_id,
-      "title": line.get("item", {}).get("title"),
-      "shop_name": seller.name,
-      "booking": booking,
-    }
+    return self._change_answer(proposal)
 
   async def cancel_purchase(self, shop: str, order_id: str) -> dict[str, Any]:
-    """Cancel a purchase for a refund, as the person could on the page."""
-    seller = self.shops[shop]
-    order = await seller.cancel(order_id)
+    """Put a cancellation for a refund in front of the person.
+
+    The shop decides at the person's yes whether the terms allow it; what
+    is shown is what the shop charged, which is what comes back.
+    """
+    row, problem = await self._live_purchase(shop, order_id)
+    if problem:
+      return problem
+    allowed, why = _refundable(row)
+    if not allowed:
+      return {"error": "not_refundable", "message": why}
+    proposal = self._propose_change(
+      "cancel",
+      row,
+      change={"refund": row.get("charged") or 0, "coins": row.get("coins", 0)},
+      reason="Cancel for a refund.",
+    )
+    return self._change_answer(proposal)
+
+  async def _live_purchase(
+    self, shop: str, order_id: str
+  ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Return the purchase a change is about, or the reason there is none."""
+    if shop not in self.shops:
+      return {}, {"error": "unknown_shop", "message": f"No shop {shop}."}
+    rows = [r for r in await self.purchases() if r["order_id"] == order_id]
+    if not rows:
+      return {}, {
+        "error": "unknown_order",
+        "message": f"No purchase {order_id} on record; list_purchases has them.",
+      }
+    row = rows[0]
+    if row.get("error"):
+      return row, {"error": "unknown_order", "message": row["error"]}
+    if row.get("voucher") != "issued" or row.get("redemption") != "unredeemed":
+      return row, {
+        "error": "not_live",
+        "message": f"{row['title']} is no longer open to change.",
+      }
+    return row, None
+
+  def _propose_change(
+    self, kind: str, row: dict[str, Any], change: dict[str, Any], reason: str
+  ) -> dict[str, Any]:
+    """Record a change to a purchase as a proposal waiting for a yes."""
+    shop = self.shops[row["shop"]]
+    self._close_open("withdrawn")
+    proposal = {
+      "id": uuid.uuid4().hex[:8],
+      "kind": kind,
+      "status": "pending",
+      "via": self.via,
+      "proposed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(
+        timespec="seconds"
+      ),
+      "shop": shop.id,
+      "shop_name": shop.name,
+      "order_id": row["order_id"],
+      "checkout_id": None,
+      "title": row["title"],
+      "quantity": row.get("quantity", 1),
+      "image": row.get("image"),
+      "service": row.get("service") or {},
+      "cancellation": row.get("cancellation") or {},
+      "change": change,
+      "totals": [],
+      "total": 0,
+      "currency": "USD",
+      "coins": {},
+      "reason": reason,
+      "considered": [],
+      "presentation": self.memory.presentation,
+    }
+    self.proposals[proposal["id"]] = proposal
+    self.emit({"type": "proposal", "proposal": proposal})
+    self._save_pending()
+    return proposal
+
+  def _change_answer(self, proposal: dict[str, Any]) -> dict[str, Any]:
+    return {
+      "proposal_id": proposal["id"],
+      "status": "waiting_for_the_customer",
+      "kind": proposal["kind"],
+      "shop": proposal["shop"],
+      "shop_name": proposal["shop_name"],
+      "order_id": proposal["order_id"],
+      "title": proposal["title"],
+      "image": proposal["image"],
+      "change": proposal["change"],
+      "service": proposal["service"],
+      "reason": proposal["reason"],
+      "total": 0,
+      "totals": [],
+    }
+
+  async def _apply_change(self, proposal: dict[str, Any], method: str) -> None:
+    """Do what the person approved: move the visit, or cancel for a refund."""
+    shop = self.shops[proposal["shop"]]
+    kind, order_id = proposal["kind"], proposal["order_id"]
+    try:
+      if kind == "reschedule":
+        order = await shop.reschedule(order_id, proposal["change"]["to"])
+      else:
+        order = await shop.cancel(order_id)
+    except ShopError as refusal:
+      self._close(proposal, "failed", method)
+      self._record("stopped", proposal, why=refusal.code, method=method)
+      self._note(f"{shop.name} refused the change: {refusal.message}")
+      self._say(
+        say("cannot_change", self.lang, shop=shop.name, message=refusal.message)
+      )
+      return
     line = (order.get("line_items") or [{}])[0]
     payment = order.get("payment") or {}
+    self._close(proposal, "done", method)
+    if kind == "reschedule":
+      booking = (line.get("service") or {}).get("booking") or {}
+      self._record_change(
+        "rescheduled", shop, order_id, line, starts_at=booking.get("starts_at")
+      )
+      self._note(f"{proposal['title']} at {shop.name} was moved to {booking.get('starts_at')}.")
+      self._say(
+        say("moved", self.lang, title=proposal["title"], shop=shop.name,
+            when=_moment(booking.get("starts_at") or proposal["change"]["to"]))
+      )
+      return
     self._record_change(
-      "cancelled_purchase",
-      seller,
-      order_id,
-      line,
-      refunded=payment.get("amount"),
-      coins=payment.get("coins", 0),
+      "cancelled_purchase", shop, order_id, line,
+      refunded=payment.get("amount"), coins=payment.get("coins", 0),
     )
-    self._note(
-      f"{line.get('item', {}).get('title', 'The purchase')} at {seller.name}"
-      f" was cancelled and refunded."
+    self._note(f"{proposal['title']} at {shop.name} was cancelled and refunded.")
+    coins = (
+      f" and {payment.get('coins')} coins to your wallet" if payment.get("coins") else ""
+    )
+    self._say(
+      say("cancelled_purchase", self.lang, title=proposal["title"], shop=shop.name,
+          back=money(payment.get("amount") or 0), coins=coins)
     )
     if payment.get("coins"):
       await self.read_wallets()
-    return {
-      "ok": True,
-      "order_id": order_id,
-      "title": line.get("item", {}).get("title"),
-      "shop_name": seller.name,
-      "refunded": payment.get("amount"),
-      "coins": payment.get("coins", 0),
-    }
 
   def _record_change(
     self, event: str, shop: Shop, order_id: str, line: dict[str, Any], **more: Any
@@ -1134,6 +1258,9 @@ class Session:
     if not proposal or proposal["status"] != "pending":
       self._say(say("not_open", self.lang))
       return
+    if proposal.get("kind") in ("cancel", "reschedule"):
+      self._say(say("not_open", self.lang))
+      return
     if (shop, option_id) not in self._seen:
       self._say(say("unknown_option", self.lang))
       return
@@ -1272,6 +1399,9 @@ class Session:
     shop = self.shops[proposal["shop"]]
     self._close(proposal, "approved", method)
     self._record("approved", proposal, method=method)
+    if proposal.get("kind") in ("cancel", "reschedule"):
+      await self._apply_change(proposal, method)
+      return
     try:
       done = await shop.complete(
         proposal["checkout_id"], self.card, self._context(proposal, method)
