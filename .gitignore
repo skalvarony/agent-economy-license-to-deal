@@ -25,3 +25,6 @@ docs/video/project/assets/*.markers.json
 docs/video/project/node_modules/
 docs/video/project/.hyperframes/
 docs/video/project/out/
+
+# Working material for the film and the poster: not part of the entry.
+docs/

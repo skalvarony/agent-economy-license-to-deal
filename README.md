@@ -47,8 +47,7 @@ through the agent and refunded in full; the slot went back on the calendar.
 | The agent's public profile and signing key, what the shops verify against | https://ltd-agent-alvaro.duckdns.org/profile.json | none |
 | A shop's open slots for a deal | https://a.licensetodeal.app/deals/spa_day_two/availability?days=3 | none |
 | Repository | https://github.com/skalvarony/agent-economy-license-to-deal (private; the jury has the snapshot) | |
-| Demo video (90 s) | submitted in HQ; script and notes in `docs/video/` | |
-| Poster | `docs/poster/overview.png` | |
+| Demo video (90 s) | submitted in HQ | |
 | Team guide, deployment, plan | `TEAM.md`, `deploy/README.md`, `PLAN.md` | |
 
 The shop account is the demo shopper the agent buys for, so the agent's
@@ -162,4 +161,4 @@ Tests: `cd rest/python/server && uv run pytest` (394), `cd agent && uv run
 pytest` (61), `cd console && uv run pytest` (17).
 
 Deployment on one VM: `deploy/README.md`. The detail of every part:
-`docs/REFERENCE.md`.
+`REFERENCE.md`.

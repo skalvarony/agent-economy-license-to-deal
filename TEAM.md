@@ -211,7 +211,7 @@ Every local start re-seeds.
 `rest/python/server` shops · `shops/` catalogues · `agent/` the agent ·
 `console/` · `shared/teamlogin.py` sign-in · `deploy/` Compose,
 Caddy, scripts, landing · `scripts/` local run · `tests-e2e/` browser tests ·
-`docs/poster/` one-page overview (PNG) · `PLAN.md` decisions and status ·
+`PLAN.md` decisions and status ·
 `README.md` the long version.
 
 ## Pending for the event
