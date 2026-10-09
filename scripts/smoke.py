@@ -240,9 +240,13 @@ def main():
   _, wallet = call("a", "GET", "/wallet?email=demo@example.com")
   check("shop a: the demo customer's wallet holds 40 coins",
         wallet["balance"] == 40 and wallet["back_percent"] == 10, wallet)
+  # The spa day is booked for a slot, like every deal; the refund above gave
+  # the first slot's place back, so the calendar offers it again.
+  slot, _ = first_slot("a", "spa_day_two")
   _, checkout = call("a", "POST", "/checkout-sessions", {
     "line_items": [{"item": {"id": "spa_day_two_3h"}, "quantity": 1}],
     "buyer": demo, "coins": {"use": 40},
+    "bookings": {"spa_day_two_3h": slot["starts_at"]},
   })
   split = {t["type"]: t["amount"] for t in checkout["totals"]}
   check("shop a: 40 coins and $59 on the card",
@@ -261,7 +265,10 @@ def main():
 
   _, ledger = call("a", "GET", "/ledger", merchant=True)
   events = [e["event"] for e in ledger]
-  expected = ["CHECKOUT_CREATED", "PAYMENT_CONFIRMED", "VOUCHER_ISSUED",
+  # The checkout refused for want of a slot, the booked purchase, its move
+  # and return, the merchant's cancellation, the fee, and the coins purchase.
+  expected = ["CHECKOUT_CREATED", "CHECKOUT_CREATED", "PAYMENT_CONFIRMED",
+              "VOUCHER_ISSUED", "BOOKING_CHANGED", "BOOKING_CHANGED",
               "MERCHANT_CANCELLED", "REFUND_AUTHORISED", "CHECKOUT_CREATED",
               "CHECKOUT_CHANGED", "CHECKOUT_CREATED", "PAYMENT_CONFIRMED",
               "VOUCHER_ISSUED", "REFUND_AUTHORISED"]
