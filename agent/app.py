@@ -264,6 +264,27 @@ async def forget(fact: Annotated[str, Body(embed=True)]) -> dict[str, Any]:
   return session.memory.as_dict()
 
 
+@app.get("/api/voice")
+async def voice_status() -> dict[str, Any]:
+  """Say whether this agent can be called, and on what number.
+
+  AGENT_PHONE is the number ElevenLabs answers for this agent (set up with
+  deploy/elevenlabs-voice.py). Empty: no voice for this agent.
+  """
+  number = re.sub(r"[^\d+]", "", os.environ.get("AGENT_PHONE", ""))
+  if not number:
+    return {"configured": False, "number": None, "display": None}
+  return {"configured": True, "number": number, "display": _spaced(number)}
+
+
+def _spaced(number: str) -> str:
+  """+12792406436 -> +1 279 240 6436, for the page; other lengths as given."""
+  digits = number.lstrip("+")
+  if len(digits) == 11 and digits.startswith("1"):
+    return f"+1 {digits[1:4]} {digits[4:7]} {digits[7:]}"
+  return number
+
+
 @app.get("/api/telegram")
 async def telegram_status() -> dict[str, Any]:
   """Say whether this agent has a bot and whether a chat is linked."""

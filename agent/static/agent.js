@@ -1312,6 +1312,23 @@
     } }));
   }
 
+  // Voice: the number to call, or no number yet.
+  async function drawVoice() {
+    const note = $("#voice-note");
+    const box = $("#voice-actions");
+    if (!box) return;
+    let state;
+    try { state = await (await fetch("/api/voice")).json(); } catch { return; }
+    box.replaceChildren();
+    if (!state.configured) {
+      note.textContent = "Call your agent and approve on the call. This agent has no number yet: the team sets one up on the server.";
+      box.append(el("span", { class: "pill plain", text: "Not set up" }));
+      return;
+    }
+    note.textContent = `Call ${state.display}. It searches, proposes and, when you say yes on the call, buys. Your words go into the record.`;
+    box.append(sourceBadge("voice"), el("a", { class: "primary small", href: `tel:${state.number}`, text: `Call ${state.display}` }));
+  }
+
   function showMemory(memory, history = []) {
     memoryState = { profile: memory.profile ?? {}, rules: { max_total: null, refundable_only: false, avoid_categories: [], ...(memory.rules ?? {}) }, presentation: { shortlist: 1, lead: "photo", detail: "full", language: "en", ...(memory.presentation ?? {}) }, preferences: memory.preferences ?? [] };
     const root = $("#settings-body");
@@ -1332,6 +1349,7 @@
     drawPreview();
     drawUsedBy();
     drawTelegram();
+    drawVoice();
   }
 
   async function loadMemory() {

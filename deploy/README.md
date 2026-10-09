@@ -161,6 +161,9 @@ ElevenLabs workspace if needed, registers the agent's MCP server, creates
 the voice agent (Claude Sonnet 4.5 at ElevenLabs, a short-sentence prompt
 for the phone) and imports the number, answered by that agent. It keeps the
 ids in `.run/elevenlabs.state.json`, so running it again updates in place.
+Put the number in `.env` as `AGENT_PHONE_<NAME>` (`AGENT_PHONE_ALVARO=+1…`)
+and recreate the agent: its page then shows the number with a Call button
+under Connections instead of "Not set up".
 `show` prints them; `simulate` runs ElevenLabs' text simulation, which does
 not execute MCP tools, so a real call is the test. Calls show on the
 agent's page and in History as coming through MCP from ElevenLabs.
