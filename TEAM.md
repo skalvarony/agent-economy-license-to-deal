@@ -26,9 +26,7 @@ answer.
 | Shop B · **Praha Pass** (food & things to do, 5 % back) | https://b.licensetodeal.app | shop account |
 | Shop C · **Dawn Saver** (final-sale wellness, no coins) | https://c.licensetodeal.app | shop account |
 | Shops console (marketplace side: orders, payments, refunds, inbox) | https://admin.licensetodeal.app | team user |
-| Álvaro's agent | https://ltd-agent-alvaro.duckdns.org | team user |
-| David's agent | https://ltd-agent-david.duckdns.org | team user |
-| Emmanouil's agent | https://ltd-agent-emmanouil.duckdns.org | team user |
+| The agent (Álvaro's; the only one deployed) | https://ltd-agent-alvaro.duckdns.org | team user |
 | UCP discovery of a shop (what an agent reads first) | https://a.licensetodeal.app/.well-known/ucp | none |
 | An agent's public profile and signing key | https://ltd-agent-alvaro.duckdns.org/profile.json | none |
 
@@ -49,8 +47,8 @@ agent they are three shops of three owners.
 **Team user.** The console and the three agent pages share one login:
 user `team`, one password. Álvaro gives it to you in person or by a safe
 channel; it is not written anywhere (only its bcrypt hash is on the server).
-Personal per-agent logins (`alvaro`, `david`, `emmanouil`) exist as an option
-but are not set up.
+A personal login for the agent (`alvaro`) exists as an option but is not set
+up.
 
 **Shop accounts** (one per shop, same email in all three; the shops create
 accounts, there is no public registration):
@@ -103,7 +101,7 @@ then update the connector in ChatGPT/Claude.
 | Service | Code | Port in the VM | Data |
 |---|---|---|---|
 | `shop-a/b/c` | `rest/python/server` (UCP sample + our services) + `shops/<a|b|c>/` catalogue | 8080 | SQLite per shop + one shared ledger volume |
-| `agent-alvaro/david/emmanouil` | `agent/` (FastAPI, scripted or OpenAI brain, MCP server, Telegram) | 8190 | volume: `journal.jsonl`, `approvals.jsonl`, `proposals.json`, `memory.json`, keys |
+| `agent-alvaro` | `agent/` (FastAPI, scripted or OpenAI brain, MCP server, Telegram) | 8190 | volume: `journal.jsonl`, `approvals.jsonl`, `proposals.json`, `memory.json`, keys |
 | `console` | `console/` | 8195 | volume: review marks |
 | `caddy` | `deploy/Caddyfile` | 80/443 | certificates |
 | landing | `deploy/landing/` (static) | via Caddy | — |
@@ -222,7 +220,7 @@ In order of value for the demo:
 
 1. **OpenAI key** (arrives at the event): set it with `set-secrets.sh`
    (asks for key and model; default `gpt-5-mini`), `docker compose up -d
-   agent-alvaro agent-david agent-emmanouil`, run the model brain for real,
+   agent-alvaro`, run the model brain for real,
    tune `agent/model_brain.py`'s instructions. Until then the scripted brain
    decides and the page says so. The brain asks GPT-5 models for low
    reasoning effort (`AGENT_REASONING`, default `low`) so a proposal takes
@@ -231,10 +229,10 @@ In order of value for the demo:
    that fails too the scripted stand-in takes the turn and says so. If the
    model misbehaves during the demo: `AGENT_BRAIN=scripted` in `.env` and
    restart the agents; the scripted brain handles the five scenarios.
-2. **Telegram bots** for David and Emmanouil: create with @BotFather, hand
-   the token to Álvaro, link from the agent page.
+2. **Your own agent**, if you want one: run `agent/` on your laptop
+   (`scripts/agent.sh start`); only Álvaro's is deployed on the server.
 3. **Shop accounts and passwords** for David and Emmanouil (`add-account.sh`);
-   connectors in your own ChatGPT / Claude with your agent's MCP URL.
+   connectors in your own ChatGPT / Claude with the agent's MCP URL.
 4. **Thursday morning:** reseed the shops, recreate accounts and coins; clear
    old `approvals.jsonl` in the agents if we want clean histories.
 5. **The night — signed approval (AP2):** the approval travels in `complete`

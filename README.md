@@ -11,7 +11,7 @@ left and why.
 | A, Dusk Deals | :8181 | https://a.licensetodeal.app | Wellness, refundable, 10% back in coins |
 | B, Praha Pass | :8182 | https://b.licensetodeal.app | Food and activities, 5% back |
 | C, Dawn Saver | :8183 | https://c.licensetodeal.app | Wellness, cheaper, non-refundable, no coins |
-| The agents | :8190 | `ltd-agent-alvaro`, `ltd-agent-david`, `ltd-agent-emmanouil` `.duckdns.org` | One per person, on its own name, behind a password |
+| The agent | :8190 | https://ltd-agent-alvaro.duckdns.org | Álvaro's, on its own name, behind a password |
 | The console | :8195 | https://admin.licensetodeal.app | The shops' side, same password |
 
 ## Run

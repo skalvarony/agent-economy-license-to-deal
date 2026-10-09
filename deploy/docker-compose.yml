@@ -76,66 +76,6 @@ services:
     volumes:
       - agent-alvaro:/data
 
-  agent-david:
-    build:
-      context: ..
-      dockerfile: agent/Dockerfile
-    restart: unless-stopped
-    environment:
-      AGENT_URL: https://${AGENT_DAVID_HOST:?set AGENT_DAVID_HOST in .env}
-      AGENT_NAME: "David's agent"
-      AGENT_CUSTOMER_NAME: "David Lorenzo"
-      AGENT_CUSTOMER_EMAIL: dlorenzo@licensetodeal.app
-      SHOP_A_URL: https://a.${DOMAIN}
-      SHOP_B_URL: https://b.${DOMAIN}
-      SHOP_C_URL: https://c.${DOMAIN}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      AGENT_BRAIN: ${AGENT_BRAIN:-}
-      AGENT_MAX_TOKENS: ${AGENT_MAX_TOKENS:-1500}
-      AGENT_FALLBACK_MODEL: ${AGENT_FALLBACK_MODEL:-}
-      AGENT_CARD_HANDLER: ${AGENT_CARD_HANDLER:-mock_payment_handler}
-      AGENT_CARD_TOKEN: ${AGENT_CARD_TOKEN:-success_token}
-      LOGIN_USERS: ${LOGIN_USERS_DAVID:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN_DAVID:-}
-      AGENT_PHONE: ${AGENT_PHONE_DAVID:-}
-      AGENT_USER: ${AGENT_USER:-}
-      AGENT_PASSWORD_HASH: ${AGENT_PASSWORD_HASH:-}
-      SIMULATION_SECRET: ${SIMULATION_SECRET}
-    volumes:
-      - agent-david:/data
-
-  agent-emmanouil:
-    build:
-      context: ..
-      dockerfile: agent/Dockerfile
-    restart: unless-stopped
-    environment:
-      AGENT_URL: https://${AGENT_EMMANOUIL_HOST:?set AGENT_EMMANOUIL_HOST in .env}
-      AGENT_NAME: "Emmanouil's agent"
-      AGENT_CUSTOMER_NAME: "Emmanouil Adamopoulos"
-      AGENT_CUSTOMER_EMAIL: eadamopoulos@licensetodeal.app
-      SHOP_A_URL: https://a.${DOMAIN}
-      SHOP_B_URL: https://b.${DOMAIN}
-      SHOP_C_URL: https://c.${DOMAIN}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      AGENT_MODEL: ${AGENT_MODEL:-gpt-5-mini}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      AGENT_BRAIN: ${AGENT_BRAIN:-}
-      AGENT_MAX_TOKENS: ${AGENT_MAX_TOKENS:-1500}
-      AGENT_FALLBACK_MODEL: ${AGENT_FALLBACK_MODEL:-}
-      AGENT_CARD_HANDLER: ${AGENT_CARD_HANDLER:-mock_payment_handler}
-      AGENT_CARD_TOKEN: ${AGENT_CARD_TOKEN:-success_token}
-      LOGIN_USERS: ${LOGIN_USERS_EMMANOUIL:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN_EMMANOUIL:-}
-      AGENT_PHONE: ${AGENT_PHONE_EMMANOUIL:-}
-      AGENT_USER: ${AGENT_USER:-}
-      AGENT_PASSWORD_HASH: ${AGENT_PASSWORD_HASH:-}
-      SIMULATION_SECRET: ${SIMULATION_SECRET}
-    volumes:
-      - agent-emmanouil:/data
-
   console:
     build:
       context: ..
@@ -146,7 +86,7 @@ services:
       SHOP_A_URL: http://shop-a:8080
       SHOP_B_URL: http://shop-b:8080
       SHOP_C_URL: http://shop-c:8080
-      AGENT_URLS: https://${AGENT_ALVARO_HOST}/profile.json=http://agent-alvaro:8190,https://${AGENT_DAVID_HOST}/profile.json=http://agent-david:8190,https://${AGENT_EMMANOUIL_HOST}/profile.json=http://agent-emmanouil:8190
+      AGENT_URLS: https://${AGENT_ALVARO_HOST}/profile.json=http://agent-alvaro:8190
       CONSOLE_RUN_DIR: /data
       AGENT_USER: ${AGENT_USER:-}
       AGENT_PASSWORD_HASH: ${AGENT_PASSWORD_HASH:-}
@@ -164,8 +104,6 @@ services:
       ALT_DOMAIN: ${ALT_DOMAIN:-${DOMAIN}}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
       AGENT_ALVARO_HOST: ${AGENT_ALVARO_HOST}
-      AGENT_DAVID_HOST: ${AGENT_DAVID_HOST}
-      AGENT_EMMANOUIL_HOST: ${AGENT_EMMANOUIL_HOST}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./landing:/srv/landing:ro
@@ -175,8 +113,6 @@ services:
 volumes:
   shops:
   agent-alvaro:
-  agent-david:
-  agent-emmanouil:
   console:
   caddy_data:
   caddy_config:

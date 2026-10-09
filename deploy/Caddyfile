@@ -27,17 +27,9 @@ admin.{$DOMAIN}, admin.{$ALT_DOMAIN} {
 	reverse_proxy console:8195
 }
 
-# Each person's agent, on its own name. The app asks the person to sign in;
-# its profile (shops fetch it) and its MCP address (secret in the path) are
-# the only open paths.
+# The agent, on its own name. The app asks the person to sign in; its
+# profile (shops fetch it) and its MCP address (secret in the path) are the
+# only open paths.
 {$AGENT_ALVARO_HOST} {
 	reverse_proxy agent-alvaro:8190
-}
-
-{$AGENT_DAVID_HOST} {
-	reverse_proxy agent-david:8190
-}
-
-{$AGENT_EMMANOUIL_HOST} {
-	reverse_proxy agent-emmanouil:8190
 }

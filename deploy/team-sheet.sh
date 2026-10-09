@@ -16,7 +16,7 @@ echo "  password: the one typed into set-secrets.sh; only its hash is stored"
 echo
 echo "Demo shopper (every shop): demo@example.com / $(env_value DEMO_PASSWORD)"
 echo
-for who in alvaro david emmanouil; do
+for who in alvaro; do
   host=$(env_value "AGENT_$(echo "$who" | tr a-z A-Z)_HOST")
   key=$(docker compose exec -T "agent-$who" sh -c 'cat /data/mcp_key 2>/dev/null' || true)
   token=$(env_value "TELEGRAM_BOT_TOKEN_$(echo "$who" | tr a-z A-Z)")

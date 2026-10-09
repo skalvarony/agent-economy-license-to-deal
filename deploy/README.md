@@ -41,10 +41,10 @@ domain, [DuckDNS](https://www.duckdns.org) gives a free one:
 With a bought domain: `A` records for the root, `a`, `b`, `c` and `admin`, to
 the VM's IP, and `DOMAIN=yourdomain.com`.
 
-Each agent gets its own name (free DuckDNS names do: `ltd-agent-alvaro`,
-`ltd-agent-david`, `ltd-agent-emmanouil`), pointed at the same IP and set
-as `AGENT_<NAME>_HOST` in `.env`. The shops then verify a key published on a
-domain they don't control.
+The agent gets its own name (a free DuckDNS name does: `ltd-agent-alvaro`),
+pointed at the same IP and set as `AGENT_ALVARO_HOST` in `.env`. The shops
+then verify a key published on a domain they don't control. Only Álvaro's
+agent is deployed; anyone else runs `agent/` on their laptop (`scripts/agent.sh`).
 
 ## 3. The code and the secrets
 

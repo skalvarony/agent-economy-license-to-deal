@@ -24,7 +24,7 @@ echo "shared ledger, then seeds the catalogues again. Agents keep their keys."
 read -rp "Type RESET to continue: " sure
 [ "$sure" = "RESET" ] || { echo "nothing done"; exit 1; }
 
-read -rp "Also clear the agents' history (journal, approvals, proposals)? [y/N] " wipe_agents
+read -rp "Also clear the agent's history (journal, approvals, proposals)? [y/N] " wipe_agents
 
 echo "Passwords for the team's shop accounts (same in the three shops):"
 declare -A PW
@@ -42,11 +42,9 @@ echo "== ledger: empty"
 docker compose exec -T shop-a sh -c ': > /data/ledger.jsonl'
 
 if [[ "$wipe_agents" =~ ^[Yy]$ ]]; then
-  echo "== agents: history cleared"
-  for who in alvaro david emmanouil; do
-    docker compose exec -T "agent-$who" sh -c 'rm -f /data/journal.jsonl /data/approvals.jsonl /data/proposals.json /data/pending.json; rm -rf /data/conversations' || true
-  done
-  docker compose restart agent-alvaro agent-david agent-emmanouil >/dev/null
+  echo "== agent: history cleared"
+  docker compose exec -T agent-alvaro sh -c 'rm -f /data/journal.jsonl /data/approvals.jsonl /data/proposals.json /data/pending.json; rm -rf /data/conversations' || true
+  docker compose restart agent-alvaro >/dev/null
 fi
 
 for i in 1 2 3 4 5 6; do

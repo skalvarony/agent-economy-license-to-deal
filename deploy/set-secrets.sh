@@ -13,15 +13,11 @@ read -rp "Email for certificate notices [$(current ACME_EMAIL)]: " ACME
 echo "Team sign-in (the console, and the agents without a personal login):"
 read -rp "  User [$(current AGENT_USER)]: " USER_NAME
 read -rsp "  Password: " AGENT_PASSWORD; echo
-echo "Personal sign-in for each agent (empty keeps the current one or the team's):"
+echo "Personal sign-in for the agent (empty keeps the current one or the team's):"
 read -rsp "  Alvaro's password: " PW_ALVARO; echo
-read -rsp "  David's password: " PW_DAVID; echo
-read -rsp "  Emmanouil's password: " PW_EMMANOUIL; echo
 read -rsp "Password of the demo account (demo@example.com): " DEMO; echo
-echo "Telegram bot tokens from @BotFather, one per agent (empty keeps the current):"
+echo "Telegram bot token from @BotFather (empty keeps the current):"
 read -rsp "  Alvaro's agent: " TG_ALVARO; echo
-read -rsp "  David's agent: " TG_DAVID; echo
-read -rsp "  Emmanouil's agent: " TG_EMMANOUIL; echo
 echo "Stripe (leave empty to keep the mock rail or the current keys):"
 read -rsp "  Secret key (sk_test_…): " STRIPE_SK; echo
 read -rp "  Publishable key (pk_test_…): " STRIPE_PK
@@ -33,12 +29,9 @@ read -rp "  Base URL [$(current OPENAI_BASE_URL)] (Anthropic: https://api.anthro
 hash() { [ -n "$1" ] && docker run --rm caddy:2-alpine caddy hash-password --plaintext "$1" || true; }
 HASH=$(hash "$AGENT_PASSWORD")
 HASH_ALVARO=$(hash "$PW_ALVARO")
-HASH_DAVID=$(hash "$PW_DAVID")
-HASH_EMMANOUIL=$(hash "$PW_EMMANOUIL")
 
 ACME="$ACME" USER_NAME="$USER_NAME" HASH="$HASH" DEMO="$DEMO" \
-  HASH_ALVARO="$HASH_ALVARO" HASH_DAVID="$HASH_DAVID" HASH_EMMANOUIL="$HASH_EMMANOUIL" \
-  TG_ALVARO="$TG_ALVARO" TG_DAVID="$TG_DAVID" TG_EMMANOUIL="$TG_EMMANOUIL" \
+  HASH_ALVARO="$HASH_ALVARO" TG_ALVARO="$TG_ALVARO" \
   STRIPE_SK="$STRIPE_SK" STRIPE_PK="$STRIPE_PK" OPENAI="$OPENAI" MODEL="$MODEL" BASE_URL="$BASE_URL" python3 - <<'PY'
 import os, re, pathlib
 env = pathlib.Path(".env")
@@ -59,12 +52,10 @@ put("ACME_EMAIL", os.environ["ACME"])
 put("AGENT_USER", os.environ["USER_NAME"])
 put("AGENT_PASSWORD_HASH", os.environ["HASH"])
 put("DEMO_PASSWORD", os.environ["DEMO"])
-for who in ("ALVARO", "DAVID", "EMMANOUIL"):
-  put(f"TELEGRAM_BOT_TOKEN_{who}", os.environ[f"TG_{who}"])
-# Each agent's own login: user is the first name, in lower case.
-for who in ("ALVARO", "DAVID", "EMMANOUIL"):
-  if os.environ[f"HASH_{who}"]:
-    put(f"LOGIN_USERS_{who}", f"{who.lower()}:{os.environ[f'HASH_{who}']}")
+put("TELEGRAM_BOT_TOKEN_ALVARO", os.environ["TG_ALVARO"])
+# The agent's own login: user is the first name, in lower case.
+if os.environ["HASH_ALVARO"]:
+  put("LOGIN_USERS_ALVARO", f"alvaro:{os.environ['HASH_ALVARO']}")
 if os.environ["STRIPE_SK"]:
   # Keys given: the shops move to the stripe rail and the agents pay with
   # Stripe's test card.
