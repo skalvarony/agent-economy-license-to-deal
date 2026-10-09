@@ -17,14 +17,9 @@ deploy/.env.local
 .claude/skills/
 skills-lock.json
 
-# Video: renders, frames and encoded takes are rebuilt from the scripts
-docs/video/renders/
-docs/video/record/out/
-docs/video/project/assets/*.mp4
-docs/video/project/assets/*.markers.json
-docs/video/project/node_modules/
-docs/video/project/.hyperframes/
-docs/video/project/out/
-
 # Working material for the film and the poster: not part of the entry.
 docs/
+
+# Never a key, never Finder droppings.
+*.pem
+.DS_Store
