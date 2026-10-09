@@ -1,47 +1,284 @@
-# Demo shops and their customer's agent
+# License to Deal
 
-Three pretend shops that sell vouchers for local experiences, and the agent
-that buys from them for a person. Each shop is the [UCP](https://ucp.dev)
-sample server with voucher selling added, started with its own catalogue; the
-agent (`agent/`) only talks to the shops over UCP. `PLAN.md` says what is
-left and why.
+**An AI agent that buys local experiences for a person, from shops that can
+tell it is genuine, with real (Stripe test mode) money, a spending cap in
+code, and a record both sides can check.**
 
-| Shop | Local | Live | Sells |
-|---|---|---|---|
-| A, Dusk Deals | :8181 | https://a.licensetodeal.app | Wellness, refundable, 10% back in coins |
-| B, Praha Pass | :8182 | https://b.licensetodeal.app | Food and activities, 5% back |
-| C, Dawn Saver | :8183 | https://c.licensetodeal.app | Wellness, cheaper, non-refundable, no coins |
-| The agent | :8190 | https://ltd-agent-alvaro.duckdns.org | Álvaro's, on its own name, behind a password |
-| The console | :8195 | https://admin.licensetodeal.app | The shops' side, same password |
+Agents 0.0.7 · From Dusk Till Dawn, Prague · Case 02 **Agentic Economy**
+(discovery / payments / trust) · side challenge **Best ElevenLabs Use** (the
+agent answers a phone number and takes the person's yes on the call).
+Team License to Deal: Álvaro Fernández, David Lorenzo, Emmanouil Adamopoulos.
 
-## Run
+## 1. In ninety seconds
+
+A person tells their agent what they want ("a spa day for two, refundable,
+under $120, Saturday at 11"). The agent discovers three independent
+marketplaces over **UCP** (the Universal Commerce Protocol), signs every
+request with its own key (RFC 9421, with expiry and nonce), compares what
+they sell against the person's budget, rules and coin wallets, checks the
+open time slots, and proposes one purchase with the exact total. The person
+says yes on the agent's page, on a card inside ChatGPT or Claude, on
+Telegram, or **by voice on a phone call**. The agent then pays through the
+shop's checkout with a Stripe PaymentIntent in test mode (authorise, capture;
+refund on cancellation), the shop issues the voucher booked for that slot,
+and both sides keep a record: the agent's journal and approvals, the shop's
+ledger with the agent's identity and the signature's outcome. Later the
+person, or the agent on their behalf, can move the visit or cancel it for a
+refund; the shop's console shows every order, who paid, through which door,
+and Stripe's fraud verdict.
+
+Executed last night in production, as evidence: order
+`befff457-e5a6-465d-ae13-b9a1d9bbee8e` in Dusk Deals, proposed and approved
+through the agent's MCP door, $99 authorised and captured on Stripe
+(PaymentIntent in test mode, Radar risk "normal", score 58), then cancelled
+through the agent and refunded in full; the slot went back on the calendar.
+The console at `admin.licensetodeal.app` shows it with its Stripe timeline.
+
+What is real, what is simulated, what is missing: section 7. Everything
+below runs on one VM; every link in section 2 is live.
+
+## 2. Links and access, for the jury
+
+| What | Where | Sign in |
+|---|---|---|
+| Landing page | https://licensetodeal.app | none |
+| Shop A · Dusk Deals (wellness, refundable, 10% back in coins) | https://a.licensetodeal.app | shop account: `demo@example.com` / `licensetodeal` |
+| Shop B · Praha Pass (food and activities, 5% back) | https://b.licensetodeal.app | same account |
+| Shop C · Dawn Saver (wellness, cheaper, non-refundable, no coins) | https://c.licensetodeal.app | same account |
+| The agent (Álvaro's; the person's side: conversation, approvals, purchases, evidence, memory and rules, connections) | https://ltd-agent-alvaro.duckdns.org | `judge` / `license-to-deal-2026` |
+| The shops' console (marketplace side: orders, payments, fraud check, refunds, ledger, inventory, customers) | https://admin.licensetodeal.app | `judge` / `license-to-deal-2026` |
+| Call the agent (ElevenLabs Conversational AI on a Twilio number; English) | **+1 279 240 6436** | say what you want, then "yes" to buy |
+| The agent as MCP tools for ChatGPT (developer mode connector) or Claude (Settings → Connectors) | `https://ltd-agent-alvaro.duckdns.org/mcp/kEZczaKChbWAH3U_5gnlC53RMxB_2DT-` | the address is the key (demo key; rotated after the event) |
+| UCP discovery of a shop, what an agent reads first | https://a.licensetodeal.app/.well-known/ucp | none |
+| The agent's public profile and signing key, what the shops verify against | https://ltd-agent-alvaro.duckdns.org/profile.json | none |
+| A shop's open slots for a deal | https://a.licensetodeal.app/deals/spa_day_two/availability?days=3 | none |
+| Repository | https://github.com/skalvarony/agent-economy-license-to-deal (private; the jury has the snapshot) | |
+| Demo video (90 s) | submitted in HQ; script and notes in `docs/video/` | |
+| Poster | `docs/poster/overview.png` | |
+| Team guide, deployment, plan | `TEAM.md`, `deploy/README.md`, `PLAN.md` | |
+
+The shop account is the demo shopper the agent buys for in the deployed
+instance, so the agent's purchases appear under "My vouchers" in each shop,
+marked as the agent's, next to the shop's own ledger of the order. The
+`judge` login is a second user beside the team's; the shops' passwords are
+scrypt hashes, the team's and the jury's bcrypt, and all live only in the
+VM's `deploy/.env` (`deploy/set-secrets.sh` writes it; nothing secret is in
+this repository). Stripe runs in test mode with Stripe's test payment
+methods (`pm_card_visa` and the Radar ones), never a card number.
+
+**Five minutes, in this order.** (1) Open the agent, sign in, type "A spa
+day for two, refundable, under $120, Saturday at 11:00"; it searches the
+three shops, shows what it turned down and why, and proposes one with the
+slot; approve; the receipt shows the voucher and Stripe's charge. (2) In the
+console, open that order: who paid, the agent's signature verified, Radar's
+verdict, the approval record and the conversation behind it. (3) Back on the
+agent, "move my spa day to Sunday at 12", approve the change; then "cancel
+it", approve: the refund goes back through Stripe and the slot is released.
+(4) Call +1 279 240 6436 and ask for the same; say yes on the call. (5) Try
+to break it: ask for something above $200 (the cap in code refuses), run
+`scripts/replay-demo.py` against a local shop (a copied signed request gets
+`401 signature_replayed`), or pay on the web with `4000 0000 0000 9995`.
+
+## 3. The problem and why this answers it (value and track relevance)
+
+Agents can act, but the moment they have to pay, every flow ends at a human
+with a credit card, because nobody on the other side can tell a genuine
+agent from a scraper, nobody can prove the person wanted that exact
+purchase, and nothing stops an agent from paying twice or paying too much.
+License to Deal takes the most ordinary purchase there is, a voucher for a
+local experience, and makes the whole loop work agent-to-shop:
+
+- **Discovery.** Each marketplace publishes `/.well-known/ucp` with its
+  capabilities and endpoints; the agent reads it, searches, reads terms,
+  stock, coins and open time slots as data, not as prose to scrape.
+- **Trust.** Every agent request is signed (ES256, RFC 9421) with a key the
+  agent publishes on a domain the shops do not control; the shops verify it,
+  refuse unsigned, stale, replayed or wrongly signed requests, record the
+  outcome on the order, and send declared bots on the web storefront to the
+  agent door instead of the human checkout.
+- **Payments.** The shop charges through Stripe (test mode): a PaymentIntent
+  authorised at `complete`, captured when the voucher is issued, cancelled or
+  refunded otherwise, with idempotency keys on lock, capture and refund so
+  nothing pays twice; the shop reads Stripe Radar's fraud verdict and acts on
+  it.
+- **Wallets.** Each shop keeps coins per customer; a purchase can be paid with
+  coins, card or both, with the exact split shown before the yes and returned
+  the same way on refund.
+- **Accountability and disputes.** The agent's journal and approvals, the
+  shop's ledger, `/evidence/{order}` putting the two side by side, a console
+  where the marketplace cancels and refunds, Stripe's fraud flags, and
+  customer self-service to move or cancel a booking, by hand or through the
+  agent.
+- **Spending policy in code.** A hard cap per purchase and per day that no
+  brain, rule or approval can lift (section 6), plus the person's own rules
+  (maximum total, refundable only, categories to avoid) enforced before any
+  checkout opens.
+
+The user is a person who would rather say what they want than browse three
+sites; the shops are merchants who want agent traffic they can trust. Both
+get something they cannot get today.
+
+## 4. What is new (originality)
+
+- **The agent is the person's, not the shop's and not the model's.** It is a
+  harness around any brain: a scripted one, a language model (Claude Sonnet
+  4.5 through OpenRouter in production), or an external assistant using the
+  agent as MCP tools (ChatGPT, Claude). The brain proposes; code signs, keeps
+  memory and rules, enforces caps, collects the yes and pays. No brain has a
+  tool that pays.
+- **The yes travels with the purchase.** The shop's order records who
+  proposed, through which channel the person approved (page, ChatGPT card,
+  Claude card, Telegram, phone) and when; on a phone call the person's own
+  words ("yes, go ahead") are kept as the quote of the approval.
+- **One agent, five front doors.** The same conversation continues on the
+  web page, in Telegram, inside a ChatGPT or Claude chat as a live card
+  (ChatGPT Apps SDK and MCP Apps, one widget), and on a phone call
+  (ElevenLabs Conversational AI reaching the agent as an MCP server), with
+  one journal that never forks.
+- **Three independent marketplaces that verify a key they do not control**,
+  the way real shops would, rather than one mock API; and the shops'
+  console sees both sides of every agent order, including the conversation
+  that led to it.
+- **Changes are purchases too.** Moving a visit or cancelling for a refund are
+  proposals that wait for the person's yes, after a live run showed a model
+  cancelling on a misread "move".
+
+## 5. It works end to end (working result)
+
+The five scenarios the entry is judged on, each runnable live:
+
+| Scenario | What happens | How to see it |
+|---|---|---|
+| 1 Normal purchase | Search three shops, propose with the exact split, yes on page / card / Telegram / phone, Stripe charge, voucher booked for the slot | Agent page, then the console's order |
+| 2 Surprise fee | The shop changes the total after the proposal; `complete` answers `409 requires_consent`, nothing is charged, the agent asks again | Console → Demo controls → booking fee |
+| 3 Fake or careless bot | Unsigned `401 signature_missing`, wrong key `401 signature_invalid`, expired `401 signature_expired`, replayed `401 signature_replayed`, private profile `400`, declared bot on the web storefront `403` | `scripts/replay-demo.py`; `rest/python/server/signature_integration_test.py` |
+| 4 Cancellations and refunds | The customer or the agent moves the visit or cancels for a refund under the deal's terms; the marketplace cancels from the console; card and coins go back the way they came, the slot is released, the code voided | Agent: "cancel my spa day"; console: Cancel and refund |
+| 5 "I never bought this" | `/evidence/{order}` lays the approval record next to the shop's order: approved vs charged, signature verified, which channel, the quote on a call | Agent → Purchases → Evidence |
+
+Checked by: 394 shop tests, 61 agent tests, 17 console tests, 8 browser
+flows, a 31-step live smoke test against fresh shops, and `eval_live.py`,
+an 11-step live conversation against the deployed brain (ask without a
+time, answer with one, buy, move, an impossible hour, cancel, decline,
+Spanish), last run 11/11 with Claude Sonnet 4.5 for $0.63.
+
+## 6. How it is built (technical execution)
+
+```
+ person ── web page │ Telegram │ ChatGPT card │ Claude card │ phone (ElevenLabs) ──► the agent
+                                                                                      │ FastAPI; brain = scripted | model | external over MCP
+                                                                                      │ memory + rules; caps in code; ES256 signing; journal + approvals
+                                                                                      ▼ UCP, RFC 9421 signatures with expires + nonce
+                                              shop-a ───────── shop-b ───────── shop-c   (the UCP sample server + our services, three catalogues)
+                                                 │ web storefront for people · verifies the agent's key from its profile
+                                                 │ checkout → exact total · complete → Stripe PaymentIntent · voucher · bookings · refunds
+                                                 ▼
+                                              Stripe (test mode): authorise, capture, refund, Radar verdict
+ shops' console ◄── merchant secret ─────────────┘        Caddy (HTTPS) · Docker Compose on one Hetzner VM
+```
+
+- **Protocols.** UCP for discovery, catalogue, checkout and orders (the shop
+  is the official sample server, Apache 2.0, with our voucher, booking,
+  coin, account and payment services added); RFC 9421 HTTP message
+  signatures with `created`, `expires` (5 min, at most 8) and a `nonce` the
+  shop remembers for the window; MCP (JSON-RPC over HTTP, with the ChatGPT
+  Apps SDK and MCP Apps UI extension) to expose the agent as tools; OpenAI
+  chat completions (through OpenRouter) for the model brain; ElevenLabs
+  Conversational AI with Twilio for the phone.
+- **Nothing pays twice.** One proposal is approved once (state closed on the
+  first yes; card and voice approvals carry one-time tokens); the shop's
+  Stripe calls carry idempotency keys; `complete` refuses a total that moved
+  since the agent last saw it; a replayed signed request is refused.
+- **Caps hold in code.** `AGENT_HARD_CAP` ($200 per purchase) and
+  `AGENT_DAILY_CAP` ($500 per 24 h, from the agent's own record) are checked
+  before a proposal is shown and again at the moment of paying, after the
+  yes, in `agent/session.py`; the person's own rules (maximum, refundable
+  only, no category) are enforced the same way before any checkout opens.
+  The page shows the caps and what was spent today.
+- **Fraud and failure paths.** Stripe Radar's verdict is read on every
+  charge: blocked or highest risk is refused before any voucher exists,
+  elevated or manual review is sold but flagged in the console with a
+  `PAYMENT_RISK_REVIEW` ledger line, a 3-D Secure request is refused with a
+  message saying an agent cannot do that step. The model brain retries,
+  falls back to a second model, and a scripted stand-in takes a turn no
+  model could; a failed request is dropped from the model's episode so it is
+  never read later as a live order.
+- **Records.** The agent: `journal.jsonl` (every message, tool call,
+  proposal, receipt, with its channel), `approvals.jsonl` (each yes and what
+  came of it), `memory.json`. The shop: orders with `agent_context`,
+  signature outcome and Stripe's verdict; one ledger across the three shops.
+- **Operations.** One VM, Docker Compose, Caddy with automatic HTTPS, secrets
+  only in the VM's `.env`; a demo reset script; a team sheet script; local
+  run with `uv` in two commands (section 8).
+
+## 7. Real, simulated, missing (validation and honest limitations)
+
+| | |
+|---|---|
+| **Real (executed)** | Stripe payments in test mode: PaymentIntent authorised, captured, cancelled and refunded through Stripe's API, with Radar's verdict (test mode moves no money; the hackathon counts it as real). UCP discovery, catalogue, checkout and orders. Signature verification with expiry and replay refusal. Bookings with capacity. Coins and mixed payment. The agent's journal and approvals. The model brain (Claude Sonnet 4.5 via OpenRouter) in production. The phone channel (ElevenLabs + Twilio). ChatGPT, Claude and Telegram channels. |
+| **Simulated, and labelled** | The three shops, their catalogues, prices, reviews and merchants are fictional. The `mock` payment rail exists for local runs and is labelled "Simulated" on the console and "(simulated)" on receipts; production runs the `stripe` rail. The merchant's side of a cancellation is the console, operated by us. |
+| **Missing or partial** | The approval is a button press (or spoken words) the agent records; the shop cannot verify it cryptographically yet (an AP2-style signed mandate is the next step; `approval_checks.py` is the stub). Every purchase waits for the person's yes: there is no "below $X the agent buys on its own" threshold yet, though the caps in code make that a small change. The nonce cache is in memory, one process per shop; replicas would need a shared store. The web storefront's bot detection is hints, not proof. The ElevenLabs voice agent's own reasoning runs at ElevenLabs (Claude Haiku 4.5) and is tuned by prompt; our agent enforces the rules and caps whatever it says. Disputes end at the console and the evidence page; there is no arbitration flow. Stripe's live mode has not been used. |
+
+What we checked: the test suites above on every change; the live smoke
+against fresh shops; `eval_live.py` against the deployed model; a real
+purchase and refund through the production agent after the last deploy
+(section 1); a real phone call that bought a non-refundable spa with "yes"
+on the call; a replay of a signed request against the deployed shop code.
+
+## 8. The case's hard rules, checked
+
+- **Real money only from our own funds; no card numbers in code.** Stripe
+  test mode on our own account; payments use Stripe's test payment method
+  tokens (`pm_card_visa`), never a PAN. The web storefront's own checkout
+  uses Stripe's hosted card element.
+- **No private keys, seed phrases or API secrets in the repo.** The agent's
+  signing key is generated on first start in its run directory
+  (gitignored); Stripe, OpenRouter, ElevenLabs, Telegram keys live only in
+  the VM's `.env`, typed through `deploy/set-secrets.sh`. The MCP address in
+  section 2 is a demo access key for the jury and is rotated after the
+  event.
+- **Every spending agent has a hard cap enforced in code, not in the
+  prompt.** `agent/session.py`: per purchase and per 24 hours, tested in
+  `agent/agent_test.py` (a proposal over the cap is refused; an approved one
+  over the cap stops before the shop is asked to charge).
+- **No token launches, no speculative trading.** None.
+- **Mocked payments labelled SIMULATED.** The mock rail is labelled on every
+  screen that shows it; the deployed shops run on Stripe.
+- **Fresh build.** The shop server starts from the UCP sample (the
+  repository's second commit is the unmodified copy); everything else is
+  ours. The hackathon's own rules let us bring our own boilerplate.
+
+## 9. Run it yourself
 
 Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 
 ```shell
-scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
+scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents (adds the nonce check)
 scripts/agent.sh start       # http://localhost:8190
 scripts/console.sh start     # http://localhost:8195
 python3 scripts/smoke.py     # 31 live checks: buys, books, moves, cancels, refunds, booking fee
+cd agent && uv run python ../scripts/replay-demo.py http://localhost:8181   # a copied signed request is refused
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
 Tests: `cd rest/python/server && uv run pytest` (394), `cd agent && uv run
-pytest` (58), `cd console && uv run pytest` (17). Browser tests in
-`tests-e2e/` (Node 22.12+, shops and agent running): `npm install && npx
-playwright install chromium` once, then `npm test` (five shop flows) and
-`npm run test:agent` (three agent flows). They use exact checks and need no
-model. `cd agent && uv run python eval_live.py` drives a running agent
-through the demo's conversations (ask without a time, answer with one,
-buy, move, an impossible hour, cancel, decline, Spanish) and checks each
-step; with a model behind the agent it is the test of its instructions, and
-it prints what the model cost per step (the agent's `/api/state` carries
-the model's running usage).
+pytest` (61), `cd console && uv run pytest` (17). Browser tests in
+`tests-e2e/` (Node 22.12+, shops and agent running, scripted brain):
+`npm install && npx playwright install chromium` once, then `npm test`
+(five shop flows) and `npm run test:agent` (three agent flows).
+`cd agent && uv run python eval_live.py` drives a running agent through the
+demo's conversations and prints what the model cost per step.
 
-`deploy/` runs it all on one VM with Docker Compose and Caddy; its `README.md`
-has the steps. Secrets live only in the VM's `deploy/.env`.
+`deploy/` runs it all on one VM with Docker Compose and Caddy; its
+`README.md` has the steps, including the phone number
+(`deploy/elevenlabs-voice.py`). Secrets live only in the VM's `deploy/.env`.
 
-## What a shop sells
+## 10. Reference
+
+The detail of each part: what a shop sells, the two doors (agents over UCP,
+people in a browser), the agent, the console, the Stripe rail, and the
+layout of the repository.
+
+### What a shop sells
 
 A deal (a spa day) is bought through one of its options (2 hours, 3 hours,
 full day). Each option has its own price and its own pool of codes; the codes
@@ -74,7 +311,7 @@ coins, a card or both; it shows the exact split, and a refund returns each
 part the way it came. Agents read `GET /wallet?email=` and send
 `coins: {"use": n}`.
 
-## The two doors
+### The two doors
 
 Both end in the same checkout code, order, voucher, payment and ledger events.
 
@@ -144,7 +381,7 @@ checkout; `POST /wallets/grant`, `GET /wallets/{email}`; `GET /inventory`,
 `GET /orders`, every order; `GET /ledger`, the events of all three shops; `PUT /orders/{id}`;
 `POST /accounts` and `PUT /accounts/{email}/password`.
 
-## The agent
+### The agent
 
 The person asks ("a spa day for two, refundable, under $120"). The agent
 searches the three shops, reads the person's coins in each, and proposes one
@@ -187,7 +424,7 @@ photos, the price or the terms first, full or brief detail, and the language
 the agent writes in (English or Spanish; `texts.py` for the scripted brain
 and the session, an instruction for the model).
 
-**Another brain can use the agent as its tools.** `POST /mcp/{key}` serves
+**Another brain can use the agent as its tools.** `POST /mcp/kEZczaKChbWAH3U_5gnlC53RMxB_2DT-` serves
 the agent's tools over MCP (JSON-RPC over HTTP): ChatGPT, Claude Code or any
 assistant that speaks it connects and gets `search_deals`, `read_wallets`,
 `recall`, `remember` and `propose_purchase` (plus `search` and `fetch`, as
@@ -249,7 +486,7 @@ its own key and record, on a name apart from the shops' domain: the shops
 verify a key published somewhere they don't control, as they would in real
 life.
 
-## The console
+### The console
 
 One page for the marketplace's side of the three shops, with a shop selector
 (`console/`). Orders: every purchase with who paid, what, how much on the
@@ -266,7 +503,7 @@ the agents for their records (each order names the agent that placed it, by
 its profile URL; `AGENT_URLS` maps profiles to addresses); it stores nothing
 itself.
 
-## Real and simulated
+### Real and simulated, in detail
 
 Real: the UCP protocol, signature checks, code pools and stock, voucher
 states, and the payment when the shop runs on the `stripe` rail
@@ -288,7 +525,7 @@ with the bank, which an agent cannot do (`SHOPPER_ACTION_REQUIRED`). Stripe
 may itself block the highest-risk card, depending on the account's Radar
 settings; then the shop reports `RISK_BLOCKED` instead.
 
-## Layout
+### Layout
 
 - `rest/python/`: the UCP sample (Apache 2.0, `Universal-Commerce-Protocol/
   samples` at `01755bc`; the repository's second commit is the unmodified
