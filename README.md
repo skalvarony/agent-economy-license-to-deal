@@ -22,7 +22,7 @@ Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents
 scripts/agent.sh start       # http://localhost:8190
 scripts/console.sh start     # http://localhost:8195
-python3 scripts/smoke.py     # 28 live checks: buys, books, moves, cancels, refunds, booking fee
+python3 scripts/smoke.py     # 31 live checks: buys, books, moves, cancels, refunds, booking fee
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
