@@ -357,6 +357,36 @@ async def mcp_endpoint(key: str, request: Request) -> Response:
   return JSONResponse(replies[0] if not isinstance(message, list) else replies)
 
 
+@app.post("/mcp/{key}/voice")
+async def mcp_voice_endpoint(key: str, request: Request) -> Response:
+  """The same tools for the agent's voice (ElevenLabs on a phone number),
+  plus the caller's yes and no on what the call proposed."""
+  if not secrets.compare_digest(key, app.state.mcp_key):
+    raise HTTPException(status_code=404, detail="Not found")
+  try:
+    message = await request.json()
+  except ValueError as error:
+    raise HTTPException(status_code=400, detail="Not JSON") from error
+  messages = message if isinstance(message, list) else [message]
+  replies = [
+    reply
+    for m in messages
+    if (reply := await mcp.handle(app.state.session, m, AGENT_URL, voice=True))
+    is not None
+  ]
+  if not replies:
+    return Response(status_code=202)
+  return JSONResponse(replies[0] if not isinstance(message, list) else replies)
+
+
+@app.get("/mcp/{key}/voice")
+async def mcp_voice_no_stream(key: str) -> Response:
+  """Nothing to push on the voice address either."""
+  if not secrets.compare_digest(key, app.state.mcp_key):
+    raise HTTPException(status_code=404, detail="Not found")
+  return Response(status_code=405)
+
+
 @app.get("/mcp/{key}")
 async def mcp_no_stream(key: str) -> Response:
   """MCP clients may open a stream here; this server has nothing to push."""

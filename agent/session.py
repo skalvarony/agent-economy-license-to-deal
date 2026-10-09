@@ -1378,31 +1378,44 @@ class Session:
   # ---- The person's answer. None of this goes through the brain.
 
   def approve(
-    self, proposal_id: str, method: str = "page"
+    self, proposal_id: str, method: str = "page", **more: Any
   ) -> AsyncIterator[dict[str, Any]]:
     """Buy what the person approved, at the total they approved.
 
     `method` names the channel the yes came through (page, chatgpt-widget,
-    telegram…) and goes into the record.
+    telegram, voice…) and goes into the record, with anything else the
+    channel knows about the yes (`quote`: the caller's words, on the phone).
     """
-    return self._stream(self._buy(proposal_id, method))
+    return self._stream(self._buy(proposal_id, method, more))
 
   def decline(
-    self, proposal_id: str, method: str = "page"
+    self, proposal_id: str, method: str = "page", **more: Any
   ) -> AsyncIterator[dict[str, Any]]:
     """Drop a proposal the person turned down."""
-    return self._stream(self._decline(proposal_id, method))
+    return self._stream(self._decline(proposal_id, method, more))
 
-  async def _decline(self, proposal_id: str, method: str = "page") -> None:
+  async def _decline(
+    self,
+    proposal_id: str,
+    method: str = "page",
+    more: dict[str, Any] | None = None,
+  ) -> None:
     proposal = self.proposals.get(proposal_id)
     if not proposal or proposal["status"] != "pending":
       return
     self._close(proposal, "declined", method)
-    self._record("declined", proposal, method=method)
+    self._record(
+      "declined", proposal, method=method, **{k: v for k, v in (more or {}).items() if v}
+    )
     self._note(f"The customer declined {proposal['title']}.")
     self._say(say("declined", self.lang))
 
-  def _context(self, proposal: dict[str, Any], method: str) -> dict[str, Any]:
+  def _context(
+    self,
+    proposal: dict[str, Any],
+    method: str,
+    more: dict[str, Any] | None = None,
+  ) -> dict[str, Any]:
     """Tell the shop how the customer came to this purchase.
 
     The shop keeps it on the order and shows it to the customer next to the
@@ -1422,22 +1435,33 @@ class Session:
     }
     if public:
       told["records_url"] = f"{public.rstrip('/')}/evidence"
+    if (more or {}).get("quote"):
+      # On the phone, the yes is the caller's words: the shop keeps them.
+      told["approved_words"] = more["quote"]
     return told
 
-  async def _buy(self, proposal_id: str, method: str = "page") -> None:
+  async def _buy(
+    self,
+    proposal_id: str,
+    method: str = "page",
+    more: dict[str, Any] | None = None,
+  ) -> None:
     proposal = self.proposals.get(proposal_id)
     if not proposal or proposal["status"] != "pending":
       self._say(say("not_open", self.lang))
       return
     shop = self.shops[proposal["shop"]]
+    more = {k: v for k, v in (more or {}).items() if v}
     self._close(proposal, "approved", method)
-    self._record("approved", proposal, method=method)
+    self._record("approved", proposal, method=method, **more)
     if proposal.get("kind") in ("cancel", "reschedule"):
       await self._apply_change(proposal, method)
       return
     try:
       done = await shop.complete(
-        proposal["checkout_id"], self.card, self._context(proposal, method)
+        proposal["checkout_id"],
+        self.card,
+        self._context(proposal, method, more),
       )
     except ShopError as refusal:
       if refusal.code == "requires_consent":

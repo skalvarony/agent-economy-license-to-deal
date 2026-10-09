@@ -26,6 +26,7 @@ says the yes came through the card.
 
 import hashlib
 import hmac
+import datetime
 import json
 import logging
 import pathlib
@@ -67,6 +68,12 @@ SDK_ORIGIN = "https://unpkg.com"
 TOKEN_SECONDS = 24 * 3600
 # The tools only the card may call, never the model.
 CARD_TOOLS = ("approve_from_card", "decline_from_card")
+# The phone's own tools, served only on the voice address (/mcp/<key>/voice):
+# the caller's yes or no, in their words, to what this call proposed.
+VOICE_TOOLS = ("approve_by_voice", "decline_by_voice")
+VOICE_VIA = "Phone"
+# A proposal made on a call can be decided on it for this long.
+VOICE_WINDOW_SECONDS = 15 * 60
 # The tools whose result is a proposal waiting for the person: a purchase,
 # or a change to one. Each gets the card and its one-time token.
 PROPOSING_TOOLS = ("propose_purchase", "reschedule_purchase", "cancel_purchase")
@@ -103,17 +110,65 @@ def _card_only() -> dict[str, Any]:
   }
 
 
-def tool_specs(session: Session) -> list[dict[str, Any]]:
-  """Describe the agent's tools the way MCP clients expect."""
+def tool_specs(session: Session, voice: bool = False) -> list[dict[str, Any]]:
+  """Describe the agent's tools the way MCP clients expect.
+
+  On the voice address the card and its tools make no sense (nothing is
+  drawn on a phone); the caller's yes and no come through the voice tools.
+  """
   specs = [
     {
       "name": tool.name,
       "description": tool.description,
       "inputSchema": tool.parameters,
-      **({"_meta": _card_binding()} if tool.name in PROPOSING_TOOLS else {}),
+      **(
+        {"_meta": _card_binding()}
+        if tool.name in PROPOSING_TOOLS and not voice
+        else {}
+      ),
     }
     for tool in session.tools
   ]
+  if voice:
+    return specs + [
+      {
+        "name": "approve_by_voice",
+        "description": (
+          "The caller's yes to a proposal made on this call: it buys, or"
+          " applies the change, as the caller said. Call it only after you"
+          " read the proposal and its exact total aloud and the caller"
+          " clearly agreed; pass their words in `quote`. Never call it on"
+          " your own judgement, and never for a proposal from elsewhere."
+        ),
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "proposal_id": {"type": "string"},
+            "quote": {
+              "type": "string",
+              "description": "The caller's exact words of agreement.",
+            },
+          },
+          "required": ["proposal_id", "quote"],
+        },
+      },
+      {
+        "name": "decline_by_voice",
+        "description": (
+          "The caller's no to a proposal made on this call. Nothing is"
+          " bought or changed; pass their words in `quote` if they gave a"
+          " reason."
+        ),
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "proposal_id": {"type": "string"},
+            "quote": {"type": "string"},
+          },
+          "required": ["proposal_id"],
+        },
+      },
+    ]
   # The card's own buttons. They need the token the card was handed; the
   # model never sees it, so these do nothing for the model.
   for name, what in (
@@ -247,6 +302,74 @@ def card_view(session: Session, proposal_id: str) -> dict[str, Any]:
   }
 
 
+async def voice_action(
+  session: Session, name: str, args: dict[str, Any]
+) -> dict[str, Any]:
+  """Approve or decline on the phone, within what the call itself proposed.
+
+  The voice agent is our own channel, like Telegram, but its brain is a
+  model: so the yes must be the caller's, in their words, for a proposal
+  this call made, and soon after it. The words go into the record and to
+  the shop, as what the approval rested on.
+  """
+  proposal_id = str(args.get("proposal_id") or "")
+  proposal = session.proposals.get(proposal_id)
+  if not proposal or proposal["status"] != "pending":
+    return _text(
+      {
+        "error": "not_open",
+        "message": "That proposal is no longer waiting: it was decided,"
+        " replaced or is unknown here.",
+        **card_view(session, proposal_id),
+      },
+      error=True,
+    )
+  if proposal.get("via") != VOICE_VIA:
+    return _text(
+      {
+        "error": "not_allowed",
+        "message": (
+          "Only what was proposed on this call can be decided on it. This"
+          " one waits for the person on their page or Telegram."
+        ),
+      },
+      error=True,
+    )
+  proposed = datetime.datetime.fromisoformat(proposal["proposed_at"])
+  age = (datetime.datetime.now(datetime.timezone.utc) - proposed).total_seconds()
+  if age > VOICE_WINDOW_SECONDS:
+    return _text(
+      {
+        "error": "expired",
+        "message": "Too long since it was proposed; propose it again and"
+        " ask once more.",
+      },
+      error=True,
+    )
+  quote = " ".join(str(args.get("quote") or "").split())[:200]
+  if name == "approve_by_voice":
+    if len(quote) < 2:
+      return _text(
+        {
+          "error": "quote_needed",
+          "message": "Pass the caller's own words of agreement in `quote`."
+          " Without them nothing is approved.",
+        },
+        error=True,
+      )
+    stream = session.approve(proposal_id, method="voice", quote=quote)
+  else:
+    stream = session.decline(proposal_id, method="voice", quote=quote or None)
+  async for _ in stream:
+    pass
+  view = card_view(session, proposal_id)
+  said = next(
+    (e["text"] for e in reversed(session.events) if e["type"] == "agent"),
+    None,
+  )
+  return _text({**view, "agent_said": said})
+
+
 async def card_action(
   session: Session, name: str, args: dict[str, Any]
 ) -> dict[str, Any]:
@@ -290,9 +413,15 @@ async def card_action(
 
 
 async def call_tool(
-  session: Session, name: str, args: dict[str, Any], page_url: str
+  session: Session,
+  name: str,
+  args: dict[str, Any],
+  page_url: str,
+  voice: bool = False,
 ) -> dict[str, Any]:
   """Run a tool for the external brain and shape the answer for MCP."""
+  if name in VOICE_TOOLS:
+    return await voice_action(session, name, args)
   if name in CARD_TOOLS:
     return await card_action(session, name, args)
   if name == "search":
@@ -347,18 +476,26 @@ async def call_tool(
     and result.get("proposal_id")
   ):
     result["page_url"] = f"{page_url}/approvals/{result['proposal_id']}"
-    result["approval"] = (
-      "Waiting for the customer to approve, on the card shown with this"
-      f" result or on their agent page: {result['page_url']}."
-      " You cannot approve or pay; only they can."
-    )
-    # The card's token travels in _meta: the card gets it, the model doesn't.
-    # So does the address where the card can read the proposal's state.
-    token = issue_token(session, result["proposal_id"])
-    meta = {
-      "card_token": token,
-      "status_url": f"{page_url}/card/{result['proposal_id']}?t={token}",
-    }
+    if voice:
+      result["approval"] = (
+        "Waiting for the caller. Read what it is and the exact total aloud"
+        " and ask whether to go ahead. Only if they clearly say yes, call"
+        " approve_by_voice with their words; if they say no, decline_by_voice."
+        " It is also on their page and Telegram, where they can decide too."
+      )
+    else:
+      result["approval"] = (
+        "Waiting for the customer to approve, on the card shown with this"
+        f" result or on their agent page: {result['page_url']}."
+        " You cannot approve or pay; only they can."
+      )
+      # The card's token travels in _meta: the card gets it, the model
+      # doesn't. So does the address where the card reads the state.
+      token = issue_token(session, result["proposal_id"])
+      meta = {
+        "card_token": token,
+        "status_url": f"{page_url}/card/{result['proposal_id']}?t={token}",
+      }
   is_error = isinstance(result, dict) and bool(result.get("error"))
   return _text(result, error=is_error, meta=meta)
 
@@ -418,9 +555,16 @@ def card_resource(session: Session) -> dict[str, Any]:
 
 
 async def handle(
-  session: Session, message: dict[str, Any], page_url: str
+  session: Session,
+  message: dict[str, Any],
+  page_url: str,
+  voice: bool = False,
 ) -> dict[str, Any] | None:
-  """Answer one JSON-RPC message. None means a notification: no reply."""
+  """Answer one JSON-RPC message. None means a notification: no reply.
+
+  `voice` is the phone's address: the same tools, plus the caller's yes and
+  no, and every proposal stamped as made on the phone.
+  """
   method = message.get("method")
   request_id = message.get("id")
   # Which methods the client uses says what it understands (resources,
@@ -452,7 +596,9 @@ async def handle(
     info = params.get("clientInfo") or {}
     client = info.get("name")
     log.info("mcp client %s %s", client, info.get("version"))
-    session.external_client = client or "another assistant"
+    session.external_client = (
+      VOICE_VIA if voice else (client or "another assistant")
+    )
     asked = str(params.get("protocolVersion") or PROTOCOL_VERSION)
     return result(
       {
@@ -469,18 +615,25 @@ async def handle(
         },
         "serverInfo": {"name": SERVER_NAME, "version": "0.1.0"},
         "instructions": (
-          "You are talking to a person's shopping agent. Search the shops,"
-          " read the wallets and what the agent knows about the person, and"
-          " propose one purchase with propose_purchase. The person approves"
-          " on the card shown with the proposal, or on the agent's page;"
-          " you cannot pay."
+          "You are the voice of a person's shopping agent, on a call with"
+          " them. Search the shops, read the wallets and what the agent"
+          " knows about the person, and propose one purchase with"
+          " propose_purchase. Read it and its exact total aloud and ask;"
+          " only on the caller's clear yes call approve_by_voice with"
+          " their words. You never pay or decide by yourself."
+          if voice
+          else "You are talking to a person's shopping agent. Search the"
+          " shops, read the wallets and what the agent knows about the"
+          " person, and propose one purchase with propose_purchase. The"
+          " person approves on the card shown with the proposal, or on the"
+          " agent's page; you cannot pay."
         ),
       }
     )
   if method == "ping":
     return result({})
   if method == "tools/list":
-    return result({"tools": tool_specs(session)})
+    return result({"tools": tool_specs(session, voice)})
   if method == "resources/list":
     return result({"resources": [card_resource(session)]})
   if method == "resources/templates/list":
@@ -504,23 +657,31 @@ async def handle(
   if method == "tools/call":
     name = params.get("name")
     args = params.get("arguments") or {}
-    known = {spec["name"] for spec in tool_specs(session)}
+    known = {spec["name"] for spec in tool_specs(session, voice)}
     if name not in known:
       return error(-32602, f"Unknown tool {name}")
     client = getattr(session, "external_client", None) or "another assistant"
     # Where the person is: the card names its host (ChatGPT, Claude
-    # Desktop); a tool call names the connector. Set before the note, so
-    # the note itself carries it.
+    # Desktop); a tool call names the connector; a call is the phone. Set
+    # before the note, so the note itself carries it.
     host = args.get("host") if name in CARD_TOOLS else None
-    session.via = (host if isinstance(host, str) and host else None) or client
+    session.via = (
+      VOICE_VIA
+      if voice
+      else (host if isinstance(host, str) and host else None) or client
+    )
     try:
-      if name in CARD_TOOLS:
+      if name in VOICE_TOOLS:
+        session.note_external(f"The customer answered on the phone: {name}.")
+      elif name in CARD_TOOLS:
         session.note_external(
           f"The customer answered from the card in {session.via}: {name}."
         )
       else:
-        session.note_external(f"{client} (over MCP) called {name}.")
-      return result(await call_tool(session, name, args, page_url))
+        session.note_external(
+          f"{'The phone' if voice else client} (over MCP) called {name}."
+        )
+      return result(await call_tool(session, name, args, page_url, voice))
     finally:
       session.via = None
   return error(-32601, f"Method not found: {method}")

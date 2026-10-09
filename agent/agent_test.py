@@ -1139,6 +1139,74 @@ def test_mcp_lists_the_tools_and_runs_them(session, shops, tmp_path):
   )
 
 
+def test_the_phone_decides_only_what_the_call_proposed(session, shops):
+  """On the voice address the caller's yes buys, in their words; nothing else."""
+  import mcp
+
+  async def rpc(method, params=None, voice=True, id=1):
+    return await mcp.handle(
+      session,
+      {"jsonrpc": "2.0", "id": id, "method": method, "params": params or {}},
+      "http://agent.test",
+      voice=voice,
+    )
+
+  init = asyncio.run(rpc("initialize", {"clientInfo": {"name": "ElevenLabs"}}))
+  assert "approve_by_voice" in init["result"]["instructions"]
+  names = [t["name"] for t in asyncio.run(rpc("tools/list"))["result"]["tools"]]
+  assert "approve_by_voice" in names and "decline_by_voice" in names
+  assert "approve_from_card" not in names
+  # The page's address serves no voice tools.
+  page = [t["name"] for t in asyncio.run(rpc("tools/list", voice=False))["result"]["tools"]]
+  assert "approve_by_voice" not in page
+  unknown = asyncio.run(rpc("tools/call", {"name": "approve_by_voice", "arguments": {}}, voice=False))
+  assert "Unknown tool" in unknown["error"]["message"]
+
+  asyncio.run(rpc("tools/call", {"name": "search_deals", "arguments": {"category": "wellness"}}))
+  made = asyncio.run(rpc("tools/call", {"name": "propose_purchase", "arguments": {
+    "shop": "a", "option_id": "spa_3h", "coins": 40, "reason": "Fits."}}))
+  answer = made["result"]["structuredContent"]
+  pid = answer["proposal_id"]
+  assert "approve_by_voice" in answer["approval"]
+  assert "_meta" not in made["result"]  # no card on a phone
+  assert session.proposals[pid]["via"] == "Phone"
+
+  # Without the caller's words nothing is approved.
+  refused = asyncio.run(rpc("tools/call", {"name": "approve_by_voice", "arguments": {"proposal_id": pid}}))
+  assert refused["result"]["isError"] and not shops[0].completed
+  # With them it is bought, and the words travel with the yes.
+  done = asyncio.run(rpc("tools/call", {"name": "approve_by_voice", "arguments": {
+    "proposal_id": pid, "quote": "yes, go ahead and buy it"}}))
+  view = done["result"]["structuredContent"]
+  assert view["status"] == "bought" and "bought" in (view.get("agent_said") or "").lower()
+  assert shops[0].completed
+  approved = [l for l in session._record_lines() if l["event"] == "approved"][-1]
+  assert approved["method"] == "voice" and approved["quote"] == "yes, go ahead and buy it"
+  told = shops[0].told[-1]
+  assert told["approved_via"] == "voice" and told["approved_words"] == "yes, go ahead and buy it"
+  # Once is enough.
+  again = asyncio.run(rpc("tools/call", {"name": "approve_by_voice", "arguments": {"proposal_id": pid, "quote": "yes"}}))
+  assert again["result"]["isError"] and len(shops[0].completed) == 1
+
+  # A proposal made on the page is not the phone's to decide.
+  run(session.say(REQUEST))
+  other = proposal_of(session)
+  assert other["via"] is None
+  blocked = asyncio.run(rpc("tools/call", {"name": "approve_by_voice", "arguments": {"proposal_id": other["id"], "quote": "yes"}}))
+  assert blocked["result"]["isError"]
+  assert "Only what was proposed on this call" in blocked["result"]["structuredContent"]["message"]
+  assert len(shops[0].completed) == 1 and other["status"] == "pending"
+
+  # A no on the phone, with a reason, is recorded as such.
+  asyncio.run(rpc("tools/call", {"name": "propose_purchase", "arguments": {
+    "shop": "a", "option_id": "spa_2h", "reason": "Cheaper."}}))
+  cheaper = proposal_of(session)
+  asyncio.run(rpc("tools/call", {"name": "decline_by_voice", "arguments": {"proposal_id": cheaper["id"], "quote": "no, too early"}}))
+  assert cheaper["status"] == "declined"
+  declined = [l for l in session._record_lines() if l["event"] == "declined"][-1]
+  assert declined["method"] == "voice" and declined["quote"] == "no, too early"
+
+
 def test_the_journal_keeps_every_conversation_and_decision(shops, tmp_path):
   import mcp
   from brain import ScriptedBrain

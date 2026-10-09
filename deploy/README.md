@@ -135,6 +135,36 @@ ssh -t root@<vm> /opt/agent-economy/deploy/add-account.sh a ana@example.com "Ana
 The demo account (`demo@example.com`) comes from the catalogue with
 `DEMO_PASSWORD`.
 
+### Voice: a phone number for an agent
+
+An agent can be called on the phone. ElevenLabs Conversational AI listens,
+speaks and runs its own model; the thinking about deals, slots and rules
+stays in our agent, which ElevenLabs reaches as an MCP server on its voice
+address (`/mcp/<key>/voice`): the same tools ChatGPT and Claude use, plus
+the caller's yes and no. The voice agent reads the proposal and its exact
+total aloud and asks; only the caller's clear yes, in their own words,
+buys, and those words go into the agent's record and to the shop
+(`approved_words`). The phone can only decide what it proposed itself, and
+within fifteen minutes; everything else waits on the page or Telegram. It needs an
+ElevenLabs API key with Conversational AI read and write, a Twilio number
+with voice, and the Twilio account SID and auth token. On your laptop, with
+the secrets in the environment and never in a file of the repository:
+
+```shell
+export ELEVENLABS_API_KEY=… TWILIO_ACCOUNT_SID=AC… TWILIO_AUTH_TOKEN=… TWILIO_NUMBER=+1…
+python3 deploy/elevenlabs-voice.py setup https://<agent host>/mcp/<key>/voice --name "Alvaro's agent"
+```
+
+The MCP key is the one the agent's page shows under "What it knows about
+you"; `team-sheet.sh` prints it too. The script enables MCP servers for the
+ElevenLabs workspace if needed, registers the agent's MCP server, creates
+the voice agent (Claude Sonnet 4.5 at ElevenLabs, a short-sentence prompt
+for the phone) and imports the number, answered by that agent. It keeps the
+ids in `.run/elevenlabs.state.json`, so running it again updates in place.
+`show` prints them; `simulate` runs ElevenLabs' text simulation, which does
+not execute MCP tools, so a real call is the test. Calls show on the
+agent's page and in History as coming through MCP from ElevenLabs.
+
 ## Day to day
 
 | Task | Command |
