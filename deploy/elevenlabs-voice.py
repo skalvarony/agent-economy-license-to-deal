@@ -33,7 +33,8 @@ import urllib.request
 API = "https://api.elevenlabs.io/v1/convai"
 STATE = pathlib.Path(os.environ.get("ELEVENLABS_STATE", ".run/elevenlabs.state.json"))
 VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel
-LLM = os.environ.get("ELEVENLABS_LLM", "claude-sonnet-4-5")
+# A fast model: on a call every turn's first token is waited for in silence.
+LLM = os.environ.get("ELEVENLABS_LLM", "claude-haiku-4-5")
 
 PROMPT = """\
 You are the voice of {name}, a personal shopping agent, on a phone call with
@@ -46,11 +47,20 @@ purchase, list what was bought, propose moving a visit or cancelling for a
 refund. Call them; never invent deals, prices, dates or slots.
 
 What matters on a call:
-- Be brief. One or two short sentences per turn. Say amounts in dollars
-  (tool results are in cents: 4910 is $49.10). Never spell out ids or URLs.
+- Be brief: one short sentence per turn, two at most. Amounts come ready
+  in dollars in tool results; say them as given. Never spell out ids or
+  URLs. Don't narrate what you are about to do; just do it.
+- Fewest tool calls: search_deals already includes the caller's coins in
+  each shop (your_coins_here); pass that number as `coins` when proposing.
+  If the caller named a day and an hour, call propose_purchase straight
+  away with starts_at for that day and hour (date YYYY-MM-DDTHH:MM in the
+  shop's time); only call check_availability if that fails or the caller
+  named no time. Each day in availability comes with its name; copy a
+  free slot's starts_at exactly.
 - Every deal is booked for a date and time. If the caller gives none, ask
-  for a day and an hour before proposing. Check the availability tool: each
-  day comes with its name; use the slot's starts_at from it, exactly.
+  for a day and an hour before proposing, in one question.
+- A visit can be moved to another open slot whatever the refund policy;
+  only cancelling for a refund depends on the deal being refundable.
 - You cannot pay, move or cancel anything by yourself. propose_purchase,
   reschedule_purchase and cancel_purchase make a proposal; it also appears
   on the owner's page and Telegram. After proposing, read what it is and
@@ -112,6 +122,8 @@ def setup(mcp_url: str, name: str) -> None:
     "approval_policy": "auto_approve_all",
     "description": "The shopping agent's own tools: deals, wallets, availability, proposals.",
     "response_timeout_secs": 60,
+    # Something to say while a tool runs, instead of silence.
+    "pre_tool_speech": "auto",
   }
   if state.get("mcp_server_id"):
     try:
@@ -140,8 +152,8 @@ def setup(mcp_url: str, name: str) -> None:
           "built_in_tools": {"end_call": {"name": "end_call"}},
         },
       },
-      "tts": {"voice_id": VOICE_ID},
-      "turn": {"turn_timeout": 10, "turn_eagerness": "normal"},
+      "tts": {"voice_id": VOICE_ID, "optimize_streaming_latency": 3},
+      "turn": {"turn_timeout": 8, "turn_eagerness": "eager"},
     },
     "name": f"{name} (voice)",
     "tags": ["license-to-deal"],

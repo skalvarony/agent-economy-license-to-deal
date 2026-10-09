@@ -34,7 +34,7 @@ import secrets
 import time
 from typing import Any
 
-from brain import Call
+from brain import Call, money
 from session import Session
 
 # Uvicorn's logger, so the lines show up with the server's own.
@@ -302,6 +302,91 @@ def card_view(session: Session, proposal_id: str) -> dict[str, Any]:
   }
 
 
+def compact_for_voice(name: str, result: Any, session: Session) -> Any:
+  """Trim a tool's answer to what a voice needs: no photos, reviews or
+  blurbs, prices in dollars said once, the slot, the state. The model on a
+  call reads every character before it speaks; a tenth of the text is a
+  turn that starts a second or two sooner."""
+  if not isinstance(result, dict) or result.get("error"):
+    return result
+
+  def dollars(cents: Any) -> str:
+    return money(int(cents)) if isinstance(cents, (int, float)) else str(cents)
+
+  if name == "search_deals":
+    wallets = {w["shop"]: w for w in (result.get("wallets") or [])}
+    deals = []
+    for d in result.get("deals") or []:
+      booking = d.get("booking") or {}
+      deals.append(
+        {
+          "shop": d["shop"],
+          "shop_name": d["shop_name"],
+          "deal_id": d["deal_id"],
+          "title": d["title"],
+          "category": d.get("category"),
+          "merchant": d.get("merchant"),
+          "refundability": d.get("refundability"),
+          "booked_at_purchase": bool(booking.get("required")),
+          "open": f"{', '.join(booking.get('days') or [])} {booking.get('hours') or ''}".strip()
+          if booking.get("required")
+          else None,
+          "promo_code": (d.get("promo") or {}).get("code"),
+          "coins_back_percent": d.get("coins_back_percent", 0),
+          "your_coins_here": wallets.get(d["shop"], {}).get("balance", 0),
+          "options": [
+            {
+              "id": o["id"],
+              "label": o["label"],
+              "price": dollars(o["price"]),
+              "price_cents": o["price"],
+              "available": o["available"],
+            }
+            for o in d.get("options") or []
+          ],
+        }
+      )
+    return {
+      "deals": deals,
+      "searched": result.get("searched"),
+      "note": "Prices are what the shop charges before coins and promo codes."
+      " your_coins_here is the caller's balance in that shop; pass it as"
+      " `coins` to propose_purchase unless they say not to.",
+    }
+  if name in PROPOSING_TOOLS:
+    booking = (result.get("service") or result.get("booking") or {}) if name == "propose_purchase" else (result.get("change") or {})
+    slot = (result.get("booking") or {}).get("starts_at") if name == "propose_purchase" else None
+    return {
+      "proposal_id": result.get("proposal_id"),
+      "status": result.get("status"),
+      "kind": result.get("kind", "purchase"),
+      "title": result.get("title"),
+      "shop_name": result.get("shop_name"),
+      "booked_for": slot,
+      "change": result.get("change"),
+      "card_pays": dollars(result.get("total", 0)),
+      "coins_used": (result.get("coins") or {}).get("applied", 0) if isinstance(result.get("coins"), dict) else 0,
+      "reason": result.get("reason"),
+      "approval": result.get("approval"),
+    }
+  if name == "list_purchases":
+    return result
+  if name == "check_availability":
+    return {
+      "deal_id": result.get("deal_id"),
+      "days": [
+        {
+          "weekday": day.get("weekday"),
+          "date": day.get("date"),
+          "free_slots": [s["starts_at"] for s in day.get("slots") or [] if s.get("left", 1) > 0],
+        }
+        for day in result.get("days") or []
+      ],
+      "note": "Pass a free slot's value as starts_at, exactly as written.",
+    }
+  return result
+
+
 async def voice_action(
   session: Session, name: str, args: dict[str, Any]
 ) -> dict[str, Any]:
@@ -367,7 +452,16 @@ async def voice_action(
     (e["text"] for e in reversed(session.events) if e["type"] == "agent"),
     None,
   )
-  return _text({**view, "agent_said": said})
+  receipt = view.get("receipt") or {}
+  return _text(
+    {
+      "status": view.get("status"),
+      "title": view.get("title"),
+      "codes": receipt.get("codes"),
+      "charged": money(receipt["charged"]) if isinstance(receipt.get("charged"), int) else None,
+      "agent_said": said,
+    }
+  )
 
 
 async def card_action(
@@ -424,6 +518,17 @@ async def call_tool(
     return await voice_action(session, name, args)
   if name in CARD_TOOLS:
     return await card_action(session, name, args)
+  if voice and name == "search_deals":
+    found = await session._run(Call(name, args))  # noqa: SLF001
+    if isinstance(found, dict) and not found.get("error"):
+      try:
+        found["wallets"] = await session.read_wallets()
+      except Exception:  # noqa: BLE001  the balance is a nicety on a call
+        found["wallets"] = []
+    return _text(
+      compact_for_voice(name, found, session),
+      error=isinstance(found, dict) and bool(found.get("error")),
+    )
   if name == "search":
     found = await session.search_deals(query=args.get("query") or None)
     results = [
@@ -497,6 +602,8 @@ async def call_tool(
         "status_url": f"{page_url}/card/{result['proposal_id']}?t={token}",
       }
   is_error = isinstance(result, dict) and bool(result.get("error"))
+  if voice:
+    result = compact_for_voice(name, result, session)
   return _text(result, error=is_error, meta=meta)
 
 
