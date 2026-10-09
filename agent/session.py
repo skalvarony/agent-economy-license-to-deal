@@ -23,7 +23,7 @@ from typing import Any
 import time
 import uuid
 
-from brain import Brain, BrainError, Call, Tool, money
+from brain import Brain, BrainError, Call, ScriptedBrain, Tool, money
 from memory import Memory
 from texts import say
 from shops import Shop, ShopError
@@ -148,6 +148,10 @@ class Session:
     self.profile = shops[0].agent_profile if shops else None
     self.memory = Memory.load(run_dir / "memory.json" if run_dir else None)
     self.brain = brain
+    # When a model can't answer, the scripted stand-in takes that turn.
+    self.standin: Brain | None = (
+      ScriptedBrain() if getattr(brain, "is_model", False) else None
+    )
     self.run_dir = run_dir
     for shop in shops:
       shop.on_call = self._on_call
@@ -502,11 +506,20 @@ class Session:
       self.reset()
     self.emit({"type": "person", "text": text})
     self.turns.append({"role": "person", "text": text})
+    brain = self.brain
     for _ in range(MAX_STEPS):
       self._refresh_memory_turn()
       try:
-        step = await self.brain.step(self.turns, self.tools)
+        step = await brain.step(self.turns, self.tools)
       except BrainError as error:
+        if self.standin is not None and brain is not self.standin:
+          # The model is down for this turn; the person is not left hanging.
+          self._say(say("standin", self.lang, error=error))
+          brain = self.standin
+          continue
+        # The request stays in the thread, but not in the brain's episode:
+        # read later next to new requests, it would look like a live order.
+        self._forget_failed_turn()
         self._say(say("cannot", self.lang, error=error))
         return
       self.turns.append(
@@ -526,6 +539,15 @@ class Session:
           }
         )
     self._say(say("too_many_steps", self.lang))
+
+  def _forget_failed_turn(self) -> None:
+    """Drop the last request and what followed it from the brain's episode."""
+    last = max(
+      (i for i, turn in enumerate(self.turns) if turn["role"] == "person"),
+      default=None,
+    )
+    if last is not None:
+      del self.turns[last:]
 
   async def _run(self, call: Call) -> Any:
     """Run one of the brain's calls. A failure is a result, not a crash."""

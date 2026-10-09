@@ -10,7 +10,7 @@ import copy
 import datetime
 import json
 
-from brain import Call, ScriptedBrain, Step, choose, money, parse
+from brain import BrainError, Call, ScriptedBrain, Step, choose, money, parse
 import httpx
 from model_brain import ModelBrain, messages
 import pytest
@@ -727,16 +727,24 @@ def model_reply(text=None, calls=()):
   return httpx.Response(200, json={"choices": [{"message": message}]})
 
 
-def model_brain_with(replies, seen):
-  """Return a ModelBrain whose API gives `replies` in turn."""
+def model_brain_with(replies, seen, fallback_model=None):
+  """Return a ModelBrain whose API gives `replies` in turn.
+
+  A reply may be an exception: the API is then unreachable for that try.
+  """
   replies = iter(replies)
 
   def answer(request):
     seen.append(request)
-    return next(replies)
+    reply = next(replies)
+    if isinstance(reply, Exception):
+      raise reply
+    return reply
 
   http = httpx.AsyncClient(transport=httpx.MockTransport(answer))
-  return ModelBrain("test-key", "Test Buyer", "test-model", http=http)
+  return ModelBrain(
+    "test-key", "Test Buyer", "test-model", http=http, fallback_model=fallback_model
+  )
 
 
 def test_model_proposes_through_the_tools_and_does_not_buy(shops, tmp_path):
@@ -808,11 +816,18 @@ def test_model_is_told_what_happened_to_its_proposal(session):
 
 
 def test_model_api_failure_is_said_and_nothing_is_bought(shops, tmp_path):
-  refusal = httpx.Response(401, json={"error": {"message": "Bad key"}})
-  session = Session(SETTINGS, shops, model_brain_with([refusal], []), tmp_path)
+  """A 401 is not retried; the stand-in takes the turn and says why."""
+  seen = []
+  refused = httpx.Response(401, json={"error": {"message": "Bad key"}})
+  brain = model_brain_with([refused], seen)
+  session = Session(SETTINGS, shops, brain, tmp_path)
+  session.standin = ScriptedBrain(now=lambda: NOW)
   events = run(session.say(REQUEST))
-  assert "401: Bad key" in events[-1]["text"]
-  assert not session.proposals
+  said = [e["text"] for e in events if e["type"] == "agent"]
+  assert "401: Bad key" in said[0] and "stand-in takes this turn" in said[0]
+  assert len(seen) == 1
+  assert proposal_of(session)["title"] == "Spa Day for Two · 3h"
+  assert not shops[0].completed
 
 
 def test_model_sending_broken_arguments_gets_an_error_back(shops, tmp_path):
@@ -1468,6 +1483,71 @@ def test_model_gets_one_more_try_after_a_rate_limit(shops, tmp_path):
   events = run(session.say(REQUEST))
   assert len(seen) == 2
   assert events[-1]["text"] == "Nothing fits today."
+
+
+def test_a_model_that_keeps_failing_gives_way_to_the_fallback_model(shops, tmp_path):
+  """Three tries on the first model, then the fallback model, once."""
+  import model_brain as mb
+
+  mb.RETRY_SECONDS = 0
+  seen = []
+  down = httpx.Response(503, json={"error": {"message": "overloaded"}})
+  brain = model_brain_with(
+    [down, down, down, model_reply("Nothing fits today.")],
+    seen,
+    fallback_model="backup-model",
+  )
+  session = Session(SETTINGS, shops, brain, tmp_path)
+  events = run(session.say(REQUEST))
+  assert [json.loads(r.content)["model"] for r in seen] == [
+    "test-model", "test-model", "test-model", "backup-model"
+  ]  # fmt: skip
+  assert brain.last_model == "backup-model"
+  assert events[-1]["text"] == "Nothing fits today."
+  # A 400 is not retried on the first model: straight to the fallback.
+  seen.clear()
+  bad = httpx.Response(400, json={"error": {"message": "no such model"}})
+  brain = model_brain_with([bad, model_reply("Still here.")], seen, "backup-model")
+  session = Session(SETTINGS, shops, brain, tmp_path)
+  events = run(session.say(REQUEST))
+  assert len(seen) == 2 and events[-1]["text"] == "Still here."
+
+
+def test_the_scripted_stand_in_takes_the_turn_when_no_model_answers(shops, tmp_path):
+  """The person is not left hanging: the stand-in proposes, and says why."""
+  import model_brain as mb
+
+  mb.RETRY_SECONDS = 0
+  seen = []
+  gone = httpx.ConnectError("no route to host")
+  brain = model_brain_with([gone] * 6, seen, fallback_model="backup-model")
+  session = Session(SETTINGS, shops, brain, tmp_path)
+  session.standin = ScriptedBrain(now=lambda: NOW)
+  events = run(session.say(REQUEST))
+  said = [e["text"] for e in events if e["type"] == "agent"]
+  assert said[0].startswith("The model didn't answer (the model didn't answer)")
+  assert "scripted stand-in takes this turn" in said[0]
+  proposal = proposal_of(session)
+  assert proposal["title"] == "Spa Day for Two · 3h"
+  assert not shops[0].completed
+  assert len(seen) == 6
+
+
+def test_a_request_the_brain_could_not_take_leaves_the_episode(shops, tmp_path):
+  """What failed stays in the thread, not among the brain's live turns."""
+
+  class Broken(ScriptedBrain):
+    is_model = False
+
+    async def step(self, turns, tools):
+      raise BrainError("out of order")
+
+  session = Session(SETTINGS, shops, Broken(), tmp_path)
+  events = run(session.say("cancel my spa day"))
+  assert "I can't go on: out of order" in events[-1]["text"]
+  assert [t["role"] for t in session.turns if t["role"] == "person"] == []
+  # The thread the person sees keeps it.
+  assert any(e["type"] == "person" and e["text"] == "cancel my spa day" for e in session.events)
 
 
 def test_reasoning_effort_goes_only_to_models_that_take_it():

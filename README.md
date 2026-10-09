@@ -206,7 +206,14 @@ rules), or a language model over the OpenAI chat API (`agent/model_brain.py`)
 when `OPENAI_API_KEY` is set; `AGENT_MODEL` names it, `OPENAI_BASE_URL` moves
 it to another provider (OpenRouter: `https://openrouter.ai/api/v1` with its
 model ids), `AGENT_MAX_TOKENS` caps an answer, `AGENT_BRAIN=scripted`
-forces the stand-in. The model
+forces the stand-in. A request the model can't take (three tries with
+growing waits on rate limits and server trouble) goes to
+`AGENT_FALLBACK_MODEL` if one is set, and if that fails too the scripted
+stand-in takes that turn and says so; a request no brain could take is
+kept in the thread but dropped from the model's episode, so it is never
+read later as a live order. Changes to a purchase (move the visit, cancel
+for a refund) are proposals like a purchase: the brain can't apply them,
+only the person's yes does. The model
 brain is tested against a fake of the API and has not run against the real
 one yet.
 

@@ -151,6 +151,12 @@ TEXTS: dict[str, dict[str, str]] = {
     " paid.",
     "es": "Algo ha fallado de mi lado y he parado. No se ha pagado nada nuevo.",
   },
+  "standin": {
+    "en": "The model didn't answer ({error}), so the scripted stand-in takes"
+    " this turn.",
+    "es": "El modelo no ha respondido ({error}), así que el guion se encarga"
+    " de este turno.",
+  },
   "cannot": {
     "en": "I can't go on: {error}. Nothing was paid.",
     "es": "No puedo seguir: {error}. No se ha pagado nada.",

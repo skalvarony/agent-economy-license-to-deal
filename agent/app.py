@@ -109,6 +109,7 @@ def choose_brain(settings: dict[str, Any]) -> Brain:
     os.environ.get("OPENAI_BASE_URL", model_brain.DEFAULT_BASE_URL),
     reasoning=os.environ.get("AGENT_REASONING", "low") or None,
     max_tokens=int(os.environ.get("AGENT_MAX_TOKENS", model_brain.DEFAULT_MAX_TOKENS)),
+    fallback_model=os.environ.get("AGENT_FALLBACK_MODEL") or None,
   )
 
 

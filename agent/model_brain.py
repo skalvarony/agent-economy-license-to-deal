@@ -15,16 +15,23 @@ from typing import Any
 
 from brain import BrainError, Call, Step, Tool
 import httpx
+import logging
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-5-mini"
 # Enough for a few tool calls and three sentences; never a whole window.
 DEFAULT_MAX_TOKENS = 1500
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-TIMEOUT_SECONDS = 90
+TIMEOUT_SECONDS = 45
 # A rate limit or a hiccup on the API's side gets one more try, after a
 # pause; anything else is reported as it is.
-RETRIED_STATUSES = (408, 409, 429, 500, 502, 503, 504)
-RETRY_SECONDS = 2.0
+# Answers worth another try: rate limits, server trouble, and the 402 a
+# provider that bills up front (OpenRouter) gives while other requests are
+# still in flight. A 400 or 401 is not retried: it would come back the same.
+RETRIED_STATUSES = (402, 408, 409, 425, 429, 500, 502, 503, 504)
+ATTEMPTS = 3
+RETRY_SECONDS = 1.0  # doubled on each further try
 
 _INSTRUCTIONS = """\
 You are the personal shopping agent of {name}. You buy vouchers for local
@@ -93,6 +100,7 @@ class ModelBrain:
     http: httpx.AsyncClient | None = None,
     reasoning: str | None = "low",
     max_tokens: int | None = DEFAULT_MAX_TOKENS,
+    fallback_model: str | None = None,
   ) -> None:
     """Keep the key and the model; `http` is for tests.
 
@@ -106,6 +114,9 @@ class ModelBrain:
     self.name = model
     self._model = model
     self._max_tokens = max_tokens
+    # Another model, asked when the first fails for good on a request.
+    self._fallback = fallback_model if fallback_model != model else None
+    self.last_model = model
     self._url = base_url.rstrip("/") + "/chat/completions"
     self._key = api_key
     self._customer_name = customer_name
@@ -138,7 +149,7 @@ class ModelBrain:
       body["reasoning_effort"] = self._reasoning
     if self._max_tokens:
       body["max_tokens"] = self._max_tokens
-    response = await self._post(body)
+    response = await self._ask(body)
     if response.status_code >= 400:
       raise BrainError(
         f"the model's API answered {response.status_code}: {_problem(response)}"
@@ -156,19 +167,44 @@ class ModelBrain:
       ],
     )
 
+  async def _ask(self, body: dict[str, Any]) -> httpx.Response:
+    """Ask the model; when it fails for good, ask the fallback model once."""
+    self.last_model = self._model
+    try:
+      response = await self._post(body)
+    except BrainError:
+      if not self._fallback:
+        raise
+      response = None
+    if response is not None and (
+      response.status_code < 400 or not self._fallback
+    ):
+      return response
+    logger.warning(
+      "%s failed (%s); asking %s instead",
+      self._model,
+      response.status_code if response is not None else "no answer",
+      self._fallback,
+    )
+    self.last_model = self._fallback
+    return await self._post({**body, "model": self._fallback})
+
   async def _post(self, body: dict[str, Any]) -> httpx.Response:
-    """Send the request; try once more after a transient failure."""
+    """Send the request; try again, waiting longer each time, after a
+    transient failure. The last answer, whatever it is, comes back."""
     headers = {"Authorization": f"Bearer {self._key}"}
-    for attempt in (1, 2):
+    wait = RETRY_SECONDS
+    for attempt in range(1, ATTEMPTS + 1):
       try:
         response = await self._http.post(self._url, json=body, headers=headers)
       except httpx.HTTPError as error:
-        if attempt == 2:
+        if attempt == ATTEMPTS:
           raise BrainError("the model didn't answer") from error
       else:
-        if response.status_code not in RETRIED_STATUSES or attempt == 2:
+        if response.status_code not in RETRIED_STATUSES or attempt == ATTEMPTS:
           return response
-      await asyncio.sleep(RETRY_SECONDS)
+      await asyncio.sleep(wait)
+      wait *= 2
     raise BrainError("the model didn't answer")  # unreachable
 
   def _instructions(self) -> dict[str, str]:
