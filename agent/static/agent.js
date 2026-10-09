@@ -1253,9 +1253,11 @@
     } catch (error) { box.append(el("p", { class: "muted", text: "Preview unavailable." })); console.error(error); }
   }
 
+  let capsInForce = null;  // the agent's own caps, enforced in its code
   function drawInForce() {
     const r = memoryState.rules;
     const chips = [];
+    if (capsInForce) chips.push(`In code: ${money(capsInForce.per_purchase)} per purchase, ${money(capsInForce.per_day)} a day (${money(capsInForce.spent_today)} spent today)`);
     if (r.max_total != null) chips.push(`Never above ${money(r.max_total)}`);
     if (r.refundable_only) chips.push("Refundable only");
     for (const c of r.avoid_categories) chips.push(`No ${c}`);
@@ -1499,6 +1501,7 @@
 
   (async () => {
     const state = await (await fetch("/api/state")).json();
+    capsInForce = state.caps ?? null;
     document.title = state.name;
     for (const node of document.querySelectorAll("[data-name]")) node.textContent = state.name;
     $("[data-customer]").textContent = state.customer.full_name;

@@ -23,6 +23,12 @@ TEXTS: dict[str, dict[str, str]] = {
     "es": "He mirado en {shops} y no hay nada que encaje. {whys}. Dime qué"
     " cambiarías y vuelvo a buscar.",
   },
+  "capped": {
+    "en": "I didn't buy it: {message} That cap is in my code, not in a"
+    " setting. Nothing was paid.",
+    "es": "No lo he comprado: {message} Ese tope está en mi código, no en"
+    " un ajuste. No se ha pagado nada.",
+  },
   "rule": {
     "en": "{message} Change the rule on your page if you want it anyway.",
     "es": "{message} Cambia la regla en tu página si lo quieres igualmente.",

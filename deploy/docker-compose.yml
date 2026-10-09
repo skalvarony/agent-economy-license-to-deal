@@ -64,6 +64,9 @@ services:
       AGENT_BRAIN: ${AGENT_BRAIN:-}
       AGENT_MAX_TOKENS: ${AGENT_MAX_TOKENS:-1500}
       AGENT_FALLBACK_MODEL: ${AGENT_FALLBACK_MODEL:-}
+      # Spending caps enforced in the agent's code, in cents.
+      AGENT_HARD_CAP: ${AGENT_HARD_CAP:-20000}
+      AGENT_DAILY_CAP: ${AGENT_DAILY_CAP:-50000}
       AGENT_CARD_HANDLER: ${AGENT_CARD_HANDLER:-mock_payment_handler}
       AGENT_CARD_TOKEN: ${AGENT_CARD_TOKEN:-success_token}
       # Who may sign in: the person's own login, else the team's.
@@ -88,6 +91,8 @@ services:
       SHOP_C_URL: http://shop-c:8080
       AGENT_URLS: https://${AGENT_ALVARO_HOST}/profile.json=http://agent-alvaro:8190
       CONSOLE_RUN_DIR: /data
+      # Who may sign in: a list of logins, else the team's.
+      LOGIN_USERS: ${LOGIN_USERS_CONSOLE:-}
       AGENT_USER: ${AGENT_USER:-}
       AGENT_PASSWORD_HASH: ${AGENT_PASSWORD_HASH:-}
     volumes:

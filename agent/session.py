@@ -130,6 +130,15 @@ def _total(checkout: dict[str, Any]) -> int:
   return next(t["amount"] for t in checkout["totals"] if t["type"] == "total")
 
 
+# The agent's spending caps, enforced in code whatever any brain or any
+# person's rule says: the most one purchase may put on the card, and the
+# most all purchases may put on it in 24 hours. The person's own rules can
+# only go lower. AGENT_HARD_CAP and AGENT_DAILY_CAP (cents) move them.
+HARD_CAP = 20_000
+DAILY_CAP = 50_000
+DAY = datetime.timedelta(hours=24)
+
+
 class Session:
   """The conversation, the open proposal and the record of approvals."""
 
@@ -139,6 +148,8 @@ class Session:
     shops: list[Shop],
     brain: Brain,
     run_dir: pathlib.Path | None = None,
+    hard_cap: int = HARD_CAP,
+    daily_cap: int = DAILY_CAP,
   ) -> None:
     """Start an empty conversation for the customer in `settings`."""
     self.name = settings.get("name", "Your agent")
@@ -147,6 +158,8 @@ class Session:
     self.shops = {shop.id: shop for shop in shops}
     self.profile = shops[0].agent_profile if shops else None
     self.memory = Memory.load(run_dir / "memory.json" if run_dir else None)
+    self.hard_cap = hard_cap
+    self.daily_cap = daily_cap
     self.brain = brain
     # When a model can't answer, the scripted stand-in takes that turn.
     self.standin: Brain | None = (
@@ -1029,6 +1042,40 @@ class Session:
         )
     return words
 
+  def spent_today(self) -> int:
+    """What the card paid in the last 24 hours, from the agent's record."""
+    since = datetime.datetime.now(datetime.timezone.utc) - DAY
+    spent = 0
+    for line in self._record_lines():
+      if line.get("event") != "purchased":
+        continue
+      try:
+        at = datetime.datetime.fromisoformat(line["at"])
+      except (KeyError, ValueError):
+        continue
+      if at >= since:
+        spent += int(line.get("charged") or 0)
+    return spent
+
+  def cap_breaks(self, total: int) -> str | None:
+    """Say which spending cap `total` on the card would break, or None.
+
+    Checked before a proposal and again at the moment of paying, in code,
+    so no brain and no approval can take the agent past them.
+    """
+    if total > self.hard_cap:
+      return (
+        f"the agent's hard cap: never above {money(self.hard_cap)} in one"
+        " purchase"
+      )
+    spent = self.spent_today()
+    if spent + total > self.daily_cap:
+      return (
+        f"the agent's daily cap: {money(self.daily_cap)} in 24 hours"
+        f" ({money(spent)} already spent)"
+      )
+    return None
+
   def _record_lines(self) -> list[dict[str, Any]]:
     if not self.run_dir or not (self.run_dir / "approvals.jsonl").exists():
       return []
@@ -1142,6 +1189,19 @@ class Session:
     checkout = await seller.open_checkout(
       option_id, quantity, self.customer, coins, promo_code, starts_at
     )
+    # The exact total the card would pay, against the agent's caps. The
+    # checkout stays open in the shop, unpaid, like any abandoned one.
+    card = next(
+      (t["amount"] for t in checkout["totals"] if t["type"] == "total"), 0
+    )
+    capped = self.cap_breaks(card)
+    if capped:
+      title = checkout["line_items"][0]["item"].get("title") or option_id
+      return {
+        "error": "cap",
+        "message": f"Not proposed: {title} at {money(card)} breaks {capped}.",
+        "cap": capped,
+      }
     self._close_open("withdrawn")
     proposal = self._propose(seller, checkout, reason, considered or [])
     return {
@@ -1456,6 +1516,15 @@ class Session:
     self._record("approved", proposal, method=method, **more)
     if proposal.get("kind") in ("cancel", "reschedule"):
       await self._apply_change(proposal, method)
+      return
+    capped = self.cap_breaks(proposal["total"])
+    if capped:
+      # The yes came, but the caps are the agent's, not the person's: the
+      # purchase stops here, before the shop is asked to charge.
+      self._close(proposal, "failed", method)
+      self._record("stopped", proposal, why="cap", method=method)
+      self._note(f"Not paid: {proposal['title']} breaks {capped}.")
+      self._say(say("capped", self.lang, message=f"{proposal['title']} breaks {capped}."))
       return
     try:
       done = await shop.complete(

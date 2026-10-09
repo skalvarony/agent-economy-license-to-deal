@@ -628,6 +628,8 @@ class ScriptedBrain:
     proposed = results["propose_purchase"]
     if proposed.get("error") == "rule":
       return Step(text=say("rule", lang, message=proposed["message"]))
+    if proposed.get("error") == "cap":
+      return Step(text=say("capped", lang, message=proposed["message"]))
     if proposed.get("error"):
       return Step(text=say("shop_refused", lang, message=proposed["message"]))
     paying = say("card_pays", lang, total=money(proposed["total"]))

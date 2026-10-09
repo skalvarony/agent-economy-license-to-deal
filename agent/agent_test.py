@@ -15,6 +15,7 @@ import httpx
 from model_brain import ModelBrain, messages
 import pytest
 from session import Session
+from brain import money
 from shops import ShopError
 
 SETTINGS = {
@@ -937,6 +938,42 @@ def test_a_hard_rule_stops_a_proposal_before_any_checkout(session, shops):
   assert len(session.proposals) == 1
   assert "nothing that fits" in events[-1]["text"]
   assert "your rule: no wellness" in events[-1]["text"]
+
+
+def test_the_hard_cap_refuses_a_proposal_whatever_the_rules_say(shops, tmp_path):
+  """$50 per purchase in code: the $69 spa day is not even proposed."""
+  session = Session(SETTINGS, shops, ScriptedBrain(now=lambda: NOW), tmp_path, hard_cap=5000)
+  events = run(session.say(REQUEST))
+  assert not [p for p in session.proposals.values() if p["status"] == "pending"]
+  assert "the agent's hard cap: never above $50 in one purchase" in events[-1]["text"]
+  assert "Nothing was paid." in events[-1]["text"]
+  assert not shops[0].completed
+
+
+def test_the_cap_holds_at_the_moment_of_paying_even_after_a_yes(session, shops):
+  """The yes came, but the daily cap is checked again before the shop is asked."""
+  run(session.say(REQUEST))
+  proposal = proposal_of(session)
+  session.daily_cap = proposal["total"] - 1
+  events = run(session.approve(proposal["id"]))
+  assert not shops[0].completed
+  assert proposal["status"] == "failed"
+  assert "the agent's daily cap" in events[-1]["text"]
+  assert "Nothing was paid." in events[-1]["text"]
+
+
+def test_the_daily_cap_counts_what_was_paid_today(shops, tmp_path):
+  """One purchase fits; the next one in the same day does not."""
+  session = Session(SETTINGS, shops, ScriptedBrain(now=lambda: NOW), tmp_path, daily_cap=10000)
+  run(session.say(REQUEST))
+  first = proposal_of(session)
+  run(session.approve(first["id"]))
+  assert len(shops[0].completed) == 1
+  assert session.spent_today() == first["total"]
+  events = run(session.say(REQUEST))
+  assert len(shops[0].completed) == 1
+  assert "the agent's daily cap: $100 in 24 hours" in events[-1]["text"]
+  assert f"{money(first['total'])} already spent" in events[-1]["text"]
 
 
 def test_rules_are_enforced_in_code_whatever_the_brain_says(shops, tmp_path):

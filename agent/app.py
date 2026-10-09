@@ -66,6 +66,7 @@ import model_brain
 import teamlogin
 import telegram
 from session import Session
+import session as session_module
 from shops import Shop
 import signing
 
@@ -148,7 +149,14 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.public_key = public_key
     brain = choose_brain(settings)
-    app.state.session = Session(settings, shops, brain, RUN_DIR)
+    app.state.session = Session(
+      settings,
+      shops,
+      brain,
+      RUN_DIR,
+      hard_cap=int(os.environ.get("AGENT_HARD_CAP", session_module.HARD_CAP)),
+      daily_cap=int(os.environ.get("AGENT_DAILY_CAP", session_module.DAILY_CAP)),
+    )
     app.state.mcp_key = os.environ.get("AGENT_MCP_KEY") or mcp.load_key(
       RUN_DIR / "mcp_key"
     )
@@ -451,6 +459,12 @@ async def state() -> dict[str, Any]:
     # Changes when the agent restarts: event numbers start over, and an
     # open page draws its thread again.
     "boot": BOOT,
+    # The spending caps enforced in code, and what the card paid today.
+    "caps": {
+      "per_purchase": session.hard_cap,
+      "per_day": session.daily_cap,
+      "spent_today": session.spent_today(),
+    },
     "brain": {
       "name": session.brain.name,
       "is_model": session.brain.is_model,
