@@ -123,7 +123,7 @@ Claude Sonnet 4.5 for $0.63.
 
 - **Protocols.** UCP (the official sample server, Apache 2.0, plus our services); RFC 9421 signatures with `expires` and `nonce`; MCP with the ChatGPT Apps SDK and MCP Apps; ElevenLabs Conversational AI with Twilio.
 - **Nothing pays twice.** One proposal is approved once; Stripe calls carry idempotency keys; `complete` refuses a total that moved; a replayed request is refused.
-- **Caps hold in code.** `AGENT_HARD_CAP` ($200 per purchase by default, $120 on the deployed agent) and `AGENT_DAILY_CAP` ($500 per 24 h), checked before proposing and again at paying, in `agent/session.py`.
+- **Caps hold in code.** `AGENT_HARD_CAP` ($200 per purchase by default, $120 on the deployed agent) and `AGENT_DAILY_CAP` ($500 per 24 h by default, $1,500 on the deployed agent for the demo day, refunds not counted), checked before proposing and again at paying, in `agent/session.py`.
 - **Fraud and failure paths.** Radar blocked or highest risk is refused, elevated is flagged, 3-D Secure is refused; the model brain retries, falls back to a second model, then a scripted stand-in.
 - **Records.** The agent's `journal.jsonl`, `approvals.jsonl` and `memory.json`; the shop's orders with `agent_context`, signature outcome and Stripe's verdict, in one ledger.
 

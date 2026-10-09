@@ -1047,15 +1047,18 @@ class Session:
     since = datetime.datetime.now(datetime.timezone.utc) - DAY
     spent = 0
     for line in self._record_lines():
-      if line.get("event") != "purchased":
-        continue
       try:
         at = datetime.datetime.fromisoformat(line["at"])
       except (KeyError, ValueError):
         continue
-      if at >= since:
+      if at < since:
+        continue
+      if line.get("event") == "purchased":
         spent += int(line.get("charged") or 0)
-    return spent
+      elif line.get("event") == "cancelled_purchase":
+        # Money that came back to the card is not spent.
+        spent -= int(line.get("refunded") or 0)
+    return max(spent, 0)
 
   def cap_breaks(self, total: int) -> str | None:
     """Say which spending cap `total` on the card would break, or None.

@@ -970,8 +970,17 @@ def test_the_daily_cap_counts_what_was_paid_today(shops, tmp_path):
   run(session.approve(first["id"]))
   assert len(shops[0].completed) == 1
   assert session.spent_today() == first["total"]
+  # A refund is not spent: cancelling frees the room again.
+  run(session.say("cancel my spa day"))
+  cancel = proposal_of(session)
+  run(session.approve(cancel["id"]))
+  assert session.spent_today() == 0
+  run(session.say(REQUEST))
+  again = proposal_of(session)
+  run(session.approve(again["id"]))
+  assert len(shops[0].completed) == 2
   events = run(session.say(REQUEST))
-  assert len(shops[0].completed) == 1
+  assert len(shops[0].completed) == 2
   assert "the agent's daily cap: $100 in 24 hours" in events[-1]["text"]
   assert f"{money(first['total'])} already spent" in events[-1]["text"]
 
