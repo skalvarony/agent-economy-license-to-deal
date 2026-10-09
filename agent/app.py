@@ -400,7 +400,14 @@ async def state() -> dict[str, Any]:
     # Changes when the agent restarts: event numbers start over, and an
     # open page draws its thread again.
     "boot": BOOT,
-    "brain": {"name": session.brain.name, "is_model": session.brain.is_model},
+    "brain": {
+      "name": session.brain.name,
+      "is_model": session.brain.is_model,
+      # The model last asked (the fallback, after a failure) and the running
+      # usage: requests, tokens, cost, seconds waiting on the model.
+      "last_model": getattr(session.brain, "last_model", None),
+      "usage": getattr(session.brain, "usage", None),
+    },
     "customer": session.customer,
     "card": session.card["label"],
     "memory": session.memory.as_dict(),

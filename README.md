@@ -31,7 +31,12 @@ pytest` (49), `cd console && uv run pytest` (16). Browser tests in
 `tests-e2e/` (Node 22.12+, shops and agent running): `npm install && npx
 playwright install chromium` once, then `npm test` (five shop flows) and
 `npm run test:agent` (three agent flows). They use exact checks and need no
-model.
+model. `cd agent && uv run python eval_live.py` drives a running agent
+through the demo's conversations (ask without a time, answer with one,
+buy, move, an impossible hour, cancel, decline, Spanish) and checks each
+step; with a model behind the agent it is the test of its instructions, and
+it prints what the model cost per step (the agent's `/api/state` carries
+the model's running usage).
 
 `deploy/` runs it all on one VM with Docker Compose and Caddy; its `README.md`
 has the steps. Secrets live only in the VM's `deploy/.env`.

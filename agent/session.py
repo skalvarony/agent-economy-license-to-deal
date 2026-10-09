@@ -767,8 +767,19 @@ class Session:
     from_day: str | None = None,
     days: int = 7,
   ) -> dict[str, Any]:
-    """Ask a shop which slots a deal has open, from a day on."""
-    return await self.shops[shop].availability(deal_id, from_day, days)
+    """Ask a shop which slots a deal has open, from a day on.
+
+    Each day is named (Saturday 10 Oct) next to its date, so a brain picks
+    a slot by name and never works a date out by itself.
+    """
+    listed = await self.shops[shop].availability(deal_id, from_day, days)
+    for day in listed.get("days") or []:
+      try:
+        date = datetime.date.fromisoformat(day["date"])
+      except (KeyError, ValueError):
+        continue
+      day["weekday"] = f"{date:%A} {date.day} {date:%B}"
+    return listed
 
   async def list_purchases(self) -> list[dict[str, Any]]:
     """Return the purchases a brain may act on, trimmed to what matters."""

@@ -226,9 +226,11 @@ In order of value for the demo:
    tune `agent/model_brain.py`'s instructions. Until then the scripted brain
    decides and the page says so. The brain asks GPT-5 models for low
    reasoning effort (`AGENT_REASONING`, default `low`) so a proposal takes
-   seconds, and retries once on a rate limit or a 5xx. If the model
-   misbehaves during the demo: `AGENT_BRAIN=scripted` in `.env` and restart
-   the agents; the scripted brain handles the five scenarios.
+   seconds, and retries three times, waiting longer each time, on a rate
+   limit or a 5xx, then asks `AGENT_FALLBACK_MODEL` if one is set, and if
+   that fails too the scripted stand-in takes the turn and says so. If the
+   model misbehaves during the demo: `AGENT_BRAIN=scripted` in `.env` and
+   restart the agents; the scripted brain handles the five scenarios.
 2. **Telegram bots** for David and Emmanouil: create with @BotFather, hand
    the token to Álvaro, link from the agent page.
 3. **Shop accounts and passwords** for David and Emmanouil (`add-account.sh`);
