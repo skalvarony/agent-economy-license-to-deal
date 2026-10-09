@@ -307,6 +307,142 @@ class CoverageGateTest(absltest.TestCase):
     self.assertEqual(ctx.exception.code, "signature_invalid")
 
 
+class FreshnessTest(absltest.TestCase):
+  """A signature must be recent, short-lived and used once (replay defence).
+
+  The clock is injected through ``now`` so every case is exact and none of
+  them sleeps.
+  """
+
+  NOW = 1_800_000_000
+
+  def setUp(self) -> None:
+    """Start each case with no nonce seen."""
+    super().setUp()
+    signing.clear_nonce_cache()
+    self.key = ec.generate_private_key(ec.SECP256R1())
+    self.jwk = signing.jwk_from_public_key(self.key.public_key(), "k")
+
+  def _verify(self, created, expires="default", nonce="n1", **kwargs) -> str:
+    """Sign a GET at ``created`` and verify it at NOW (or kwargs['now'])."""
+    if expires == "default":
+      expires = created + 300
+    add = signing.sign_request(
+      self.key,
+      "k",
+      "GET",
+      "https://m.example/p",
+      {},
+      b"",
+      created=created,
+      expires=expires,
+      nonce=nonce,
+    )
+    headers = {
+      "signature-input": add["Signature-Input"],
+      "signature": add["Signature"],
+    }
+    kwargs.setdefault("now", self.NOW)
+    return signing.verify_request(
+      "GET", "m.example", "/p", "", headers, b"", [self.jwk], **kwargs
+    )
+
+  def _assert_refused(self, code: str, *args, **kwargs) -> None:
+    """Assert that verification fails with the given UCP error code."""
+    with self.assertRaises(signing.SignatureError) as ctx:
+      self._verify(*args, **kwargs)
+    self.assertEqual(ctx.exception.code, code)
+    self.assertEqual(ctx.exception.status_code, 401)
+
+  def test_fresh_signature_passes(self) -> None:
+    """A signature made just now, inside its window, verifies."""
+    self.assertEqual(self._verify(self.NOW), "k")
+
+  def test_expired_signature_refused(self) -> None:
+    """Past its `expires` the same signature is signature_expired."""
+    self._assert_refused("signature_expired", self.NOW - 400)
+
+  def test_expires_boundary_is_inclusive(self) -> None:
+    """At the very second of `expires` the signature is still accepted."""
+    self.assertEqual(self._verify(self.NOW - 300), "k")
+
+  def test_created_in_the_future_refused(self) -> None:
+    """More than 120 seconds ahead of the clock is signature_expired."""
+    self._assert_refused("signature_expired", self.NOW + 121)
+
+  def test_small_clock_skew_allowed(self) -> None:
+    """A `created` up to 120 seconds ahead is clock skew, not an attack."""
+    self.assertEqual(self._verify(self.NOW + 120), "k")
+
+  def test_window_longer_than_480_seconds_refused(self) -> None:
+    """A window (expires minus created) above 480 is refused."""
+    self._assert_refused("signature_expired", self.NOW, self.NOW + 481)
+
+  def test_window_of_480_seconds_allowed(self) -> None:
+    """The card networks' 8 minute limit itself is accepted."""
+    self.assertEqual(self._verify(self.NOW, self.NOW + 480), "k")
+
+  def test_no_expires_old_created_refused(self) -> None:
+    """Without `expires`, a request older than the max age is refused."""
+    self._assert_refused("signature_expired", self.NOW - 301, None)
+
+  def test_no_expires_recent_created_passes(self) -> None:
+    """Without `expires`, a request inside the max age still passes."""
+    self.assertEqual(self._verify(self.NOW - 299, None), "k")
+
+  def test_max_age_is_configurable(self) -> None:
+    """The max age for signatures without `expires` can be tightened."""
+    self._assert_refused("signature_expired", self.NOW - 61, None, max_age=60)
+
+  def test_same_nonce_twice_is_replayed(self) -> None:
+    """The second use of one (keyid, nonce) is signature_replayed."""
+    self.assertEqual(self._verify(self.NOW, nonce="once"), "k")
+    self._assert_refused("signature_replayed", self.NOW, nonce="once")
+
+  def test_new_nonce_passes(self) -> None:
+    """A different nonce from the same key is a different request."""
+    self.assertEqual(self._verify(self.NOW, nonce="a"), "k")
+    self.assertEqual(self._verify(self.NOW, nonce="b"), "k")
+
+  def test_nonce_is_forgotten_after_its_window(self) -> None:
+    """Expired pairs are dropped, so the cache does not grow for ever."""
+    self._verify(self.NOW, nonce="old")
+    self.assertLen(signing._SEEN_NONCES, 1)
+    # 301 seconds later the old signature could not pass anyway.
+    self._verify(self.NOW + 301, nonce="new", now=self.NOW + 301)
+    self.assertEqual([k[1] for k in signing._SEEN_NONCES], ["new"])
+
+  def test_failed_signature_does_not_use_up_a_nonce(self) -> None:
+    """A signature that does not verify never reaches the nonce cache."""
+    other = ec.generate_private_key(ec.SECP256R1())
+    self.key, good = other, self.key
+    with self.assertRaises(signing.SignatureError):
+      self._verify(self.NOW, nonce="x")
+    self.key = good
+    self.assertEqual(self._verify(self.NOW, nonce="x"), "k")
+
+  def test_missing_nonce_refused_when_required(self) -> None:
+    """With require_nonce a signature without a nonce is signature_invalid."""
+    self._assert_refused(
+      "signature_invalid", self.NOW, nonce=None, require_nonce=True
+    )
+
+  def test_missing_nonce_accepted_when_not_required(self) -> None:
+    """Without the requirement, an old-style signature still passes."""
+    self.assertEqual(self._verify(self.NOW, nonce=None), "k")
+
+  def test_old_vector_needs_an_injected_clock(self) -> None:
+    """A fixed vector with an old `created` verifies only at its own time.
+
+    Official vectors are frozen in time. They stay valid by passing the
+    moment they were made as ``now``; production code has no switch to skip
+    the check.
+    """
+    created = 1_618_884_473  # the RFC 9421 examples' timestamp
+    self._assert_refused("signature_expired", created, None, now=None)
+    self.assertEqual(self._verify(created, None, now=created + 1), "k")
+
+
 class SsrfGuardTest(absltest.TestCase):
   """Profile-URL transport and SSRF guards."""
 

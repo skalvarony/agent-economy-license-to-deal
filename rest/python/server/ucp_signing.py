@@ -34,6 +34,7 @@ import hashlib
 import ipaddress
 import logging
 import socket
+import threading
 import time
 from urllib.parse import urlsplit
 
@@ -48,6 +49,22 @@ logger = logging.getLogger(__name__)
 # Public keys resolved from a signer profile are cached for this many seconds.
 _KEY_CACHE_TTL_SECONDS = 300
 _KEY_CACHE: dict[str, tuple[float, list[dict]]] = {}
+
+# How long a signature may live. A signature that carries `expires` may span at
+# most this many seconds from `created` (the card networks' agent protocols
+# allow 8 minutes). One without `expires` is trusted for DEFAULT_MAX_AGE_SECONDS
+# after `created`, so an old copied request fails even if it never had one.
+MAX_WINDOW_SECONDS = 480
+DEFAULT_MAX_AGE_SECONDS = 300
+# How far ahead of the shop's clock a `created` may be (clock skew).
+CLOCK_SKEW_SECONDS = 120
+
+# Nonces already seen: (keyid, nonce) -> the time after which the signature
+# could no longer be accepted anyway. In memory and per process: one process
+# per shop is enough for the demo. With several replicas this must move to a
+# shared store (Redis SET NX with a TTL), or a replay could hit another replica.
+_SEEN_NONCES: dict[tuple[str, str], float] = {}
+_SEEN_LOCK = threading.Lock()
 
 # Curve -> (JWA algorithm name, coordinate byte length). ES384 is intentionally
 # omitted: the spec lists it as OPTIONAL and the baseline every verifier MUST
@@ -480,6 +497,96 @@ def _sig_capable(jwk: dict) -> bool:
   return key_ops is None or "verify" in key_ops
 
 
+def clear_nonce_cache() -> None:
+  """Forget every nonce seen so far (used by tests)."""
+  with _SEEN_LOCK:
+    _SEEN_NONCES.clear()
+
+
+def _int_param(params: dict, name: str) -> int | None:
+  """Read an integer signature parameter, or None when it is absent."""
+  value = params.get(name)
+  if value is None:
+    return None
+  try:
+    return int(value)
+  except ValueError as exc:
+    raise SignatureError(
+      "signature_invalid", 401, f"Signature parameter {name!r} is not a number"
+    ) from exc
+
+
+def _check_fresh_and_record(
+  params: dict,
+  keyid: str,
+  now: float,
+  max_age: int,
+  require_nonce: bool,
+) -> None:
+  """Refuse a signature that is too old, too new, too long-lived or replayed.
+
+  Runs only after the signature itself verified, so an attacker cannot fill the
+  nonce cache with values from signatures that were never valid. The check and
+  the recording of the nonce happen under one lock, so two copies of the same
+  request arriving together cannot both pass.
+
+  Args:
+    params: The ``Signature-Input`` parameters of the verified signature.
+    keyid: The key that verified it.
+    now: The shop's current time in seconds (injected so tests can fix it).
+    max_age: Seconds a signature without ``expires`` is accepted after
+      ``created``.
+    require_nonce: Refuse a signature that carries no nonce.
+
+  Raises:
+    SignatureError: ``signature_expired``, ``signature_replayed`` or
+      ``signature_invalid`` (no ``created``, or no nonce when one is required).
+
+  """
+  created = _int_param(params, "created")
+  expires = _int_param(params, "expires")
+  nonce = params.get("nonce")
+  if created is None:
+    raise SignatureError(
+      "signature_invalid", 401, "Signature has no 'created' timestamp"
+    )
+  if created > now + CLOCK_SKEW_SECONDS:
+    raise SignatureError(
+      "signature_expired", 401, "Signature 'created' is in the future"
+    )
+  if expires is None:
+    if now - created > max_age:
+      raise SignatureError(
+        "signature_expired",
+        401,
+        f"Signature is older than {max_age} seconds and has no 'expires'",
+      )
+    valid_until = created + max_age
+  else:
+    if expires - created > MAX_WINDOW_SECONDS:
+      raise SignatureError(
+        "signature_expired",
+        401,
+        f"Signature window is longer than {MAX_WINDOW_SECONDS} seconds",
+      )
+    if now > expires:
+      raise SignatureError("signature_expired", 401, "Signature has expired")
+    valid_until = expires
+  if not nonce:
+    if require_nonce:
+      raise SignatureError("signature_invalid", 401, "Signature has no 'nonce'")
+    return
+  with _SEEN_LOCK:
+    # Drop the pairs whose signatures could not be accepted any more.
+    for pair in [p for p, until in _SEEN_NONCES.items() if until < now]:
+      del _SEEN_NONCES[pair]
+    if (keyid, nonce) in _SEEN_NONCES:
+      raise SignatureError(
+        "signature_replayed", 401, "This signature was already used"
+      )
+    _SEEN_NONCES[(keyid, nonce)] = valid_until
+
+
 def verify_request(
   method: str,
   authority: str,
@@ -488,6 +595,10 @@ def verify_request(
   headers: dict,
   body: bytes,
   keys: list[dict],
+  *,
+  now: float | None = None,
+  max_age: int = DEFAULT_MAX_AGE_SECONDS,
+  require_nonce: bool = False,
 ) -> str:
   """Verify the signatures on an inbound UCP request.
 
@@ -502,12 +613,19 @@ def verify_request(
     headers: Case-insensitive request headers.
     body: Raw request body bytes.
     keys: The signer's published JWKs.
+    now: The current time in seconds; defaults to the clock. Tests that replay
+      fixed vectors with an old ``created`` pass the time of the vector.
+    max_age: Seconds a signature without ``expires`` is accepted after
+      ``created``.
+    require_nonce: Refuse a signature that carries no ``nonce``.
 
   Returns:
     The ``keyid`` of the signature that verified.
 
   Raises:
-    SignatureError: With the appropriate UCP code when no signature verifies.
+    SignatureError: With the appropriate UCP code when no signature verifies
+      (``signature_expired`` and ``signature_replayed`` for a stale or reused
+      one).
 
   """
   sig_input = parse_signature_input(headers.get("signature-input", ""))
@@ -544,6 +662,7 @@ def verify_request(
     # RFC 9421 Section 2.1: a covered field value is OWS-trimmed.
     return value.strip() if isinstance(value, str) else value
 
+  now = time.time() if now is None else now
   last_error = SignatureError(
     "signature_invalid", 401, "No valid signature found"
   )
@@ -584,6 +703,13 @@ def verify_request(
     except SignatureError as exc:
       last_error = exc
       continue
+    try:
+      _check_fresh_and_record(
+        desc["params"], keyid, now, max_age, require_nonce
+      )
+    except SignatureError as exc:
+      last_error = exc
+      continue
     return keyid
   raise last_error
 
@@ -597,6 +723,8 @@ def sign_request(
   body: bytes,
   created: int | None = None,
   extra_components: tuple[str, ...] = (),
+  expires: int | None = None,
+  nonce: str | None = None,
 ) -> dict:
   """Sign a UCP request and return the headers to add.
 
@@ -618,6 +746,10 @@ def sign_request(
       covered when the header is present on the request, mirroring how the
       required table conditions on header presence. Webhook deliveries use
       this to bind ``Webhook-Id`` and ``Webhook-Timestamp``.
+    expires: Optional ``expires`` timestamp. When None (the default) the
+      parameter is left out, as before.
+    nonce: Optional one-time value for the ``nonce`` parameter. When None the
+      parameter is left out, as before.
 
   Returns:
     A dict of header names to values that the caller must add to the request.
@@ -644,7 +776,10 @@ def sign_request(
   created = int(time.time()) if created is None else created
   raw_params = (
     "(" + " ".join(f'"{c}"' for c in components) + ")"
-    f';created={created};keyid="{kid}"'
+    f";created={created}"
+    + (f";expires={expires}" if expires is not None else "")
+    + f';keyid="{kid}"'
+    + (f';nonce="{nonce}"' if nonce is not None else "")
   )
 
   def resolve(name: str) -> str | None:

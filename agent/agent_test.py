@@ -64,6 +64,8 @@ class FakeShop:
     self.products = products
     self.balance = balance
     self.fee = 0
+    self.refusal = None  # a ShopError to answer `complete` with
+    self.risk = None  # the fraud check the shop keeps on its orders
     self.checkouts = {}
     self.completed = []
     self.told = []  # the agent_context of each completed checkout
@@ -186,6 +188,8 @@ class FakeShop:
 
   async def complete(self, checkout_id, card, context=None):
     assert card["handler"] and card["token"], "the card is handler + token"
+    if self.refusal:
+      raise self.refusal
     now = self._checkout(checkout_id)["totals"][-1]["amount"]
     if now != self.checkouts[checkout_id]["seen"]:
       raise ShopError(409, "requires_consent", "The total changed.")
@@ -255,6 +259,7 @@ class FakeShop:
         "coins": stored["coins"],
         "rail": "mock",
         "status": "refunded" if refunded else "captured",
+        **({"risk": self.risk} if self.risk else {}),
       },
     }
 
@@ -580,6 +585,39 @@ def test_evidence_puts_the_record_and_the_order_side_by_side(session, shops):
   assert any("verified the agent's signature" in t for t in texts)
   assert any("names this agent's profile" in t for t in texts)
   assert not [f for f in evidence["findings"] if f["ok"] is False]
+
+
+def test_a_three_d_secure_refusal_reaches_the_person_in_plain_words(
+  session, shops
+):
+  run(session.say(REQUEST))
+  proposal = proposal_of(session)
+  shops[0].refusal = ShopError(
+    402,
+    "SHOPPER_ACTION_REQUIRED",
+    "The card's bank asks the person to confirm this payment (3-D Secure)."
+    " An agent cannot do this step for the person.",
+  )
+  events = run(session.approve(proposal["id"]))
+  assert not shops[0].completed
+  assert proposal["status"] == "failed"
+  text = events[-1]["text"]
+  assert "(3-D Secure)" in text
+  assert "An agent cannot do this step for the person." in text
+  assert text.endswith("Nothing was paid.")
+
+
+def test_evidence_tells_what_the_fraud_check_said(session, shops):
+  run(session.say(REQUEST))
+  proposal = proposal_of(session)
+  shops[0].risk = {"level": "elevated", "review": True, "score": None}
+  run(session.approve(proposal["id"]))
+
+  evidence = asyncio.run(session.evidence(f"order_{proposal['checkout_id']}"))
+
+  texts = [f["text"] for f in evidence["findings"]]
+  assert any("fraud check flagged this payment" in t for t in texts)
+  assert evidence["order"]["payment"]["risk"]["level"] == "elevated"
 
 
 def test_the_conversation_behind_an_order_is_kept(session, shops):
@@ -1631,3 +1669,38 @@ def test_reasoning_effort_goes_only_to_models_that_take_it():
     brain = ModelBrain("k", "Test Buyer", model, http=http)
     asyncio.run(brain.step([{"role": "person", "text": "hi"}], []))
     assert seen[-1].get("reasoning_effort") == expected, model
+
+
+def test_signature_carries_expires_and_a_fresh_nonce():
+  """Every signed request has expires (created + 300) and its own nonce."""
+  import re
+  import time
+
+  from cryptography.hazmat.primitives.asymmetric import ec
+  from signing import RequestSigner
+
+  signer = RequestSigner(ec.generate_private_key(ec.SECP256R1()), "kid-1")
+  seen = []
+
+  def answer(request):
+    seen.append(request.headers["Signature-Input"])
+    return httpx.Response(200)
+
+  async def send_twice():
+    async with httpx.AsyncClient(
+      transport=httpx.MockTransport(answer), auth=signer
+    ) as http:
+      await http.get("https://shop.example/catalog")
+      await http.get("https://shop.example/catalog")
+
+  before = int(time.time())
+  asyncio.run(send_twice())
+  nonces = []
+  for header in seen:
+    created = int(re.search(r";created=(\d+)", header).group(1))
+    expires = int(re.search(r";expires=(\d+)", header).group(1))
+    nonces.append(re.search(r';nonce="([A-Za-z0-9_-]{22})"', header).group(1))
+    assert before <= created <= before + 5
+    assert expires == created + 300
+    assert ';keyid="kid-1"' in header
+  assert len(nonces) == 2 and nonces[0] != nonces[1]

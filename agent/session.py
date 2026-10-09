@@ -1730,6 +1730,18 @@ class Session:
           f"The shop charged {money(charged or 0)}; the approval was for"
           f" {money(approval['total'])}.",
         )
+      risk = payment.get("risk")
+      if risk and risk.get("review"):
+        find(
+          None,
+          "Stripe's fraud check flagged this payment for review (risk level"
+          f" {risk.get('level')}). The sale went through.",
+        )
+      elif risk:
+        find(
+          True,
+          f"Stripe's fraud check rated the payment {risk.get('level')}.",
+        )
       signature = order.get("signature") or {}
       if signature.get("status") == "verified":
         find(

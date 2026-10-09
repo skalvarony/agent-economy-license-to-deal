@@ -100,15 +100,18 @@ over the raw body. The signer's public key is discovered from the profile URL in
 the `UCP-Agent` header (its `keys[]`). `ES256` (fixed-width raw `r||s`, not
 ASN.1/DER) is the baseline; `Ed25519` is also supported.
 
-Behaviour is controlled by two flags:
+Behaviour is controlled by these flags:
 
 | Flag                            | Default | Effect                                                                                                                                                                                                             |
 | ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--require_signatures`          | `false` | Reject requests whose signature is missing or invalid. When `false`, a present signature is still verified and the result logged, but unsigned or invalid requests are allowed — so existing clients keep working. |
+| `--require_signature_nonce`     | `false` | Refuse a signature with no `nonce` (`401 signature_invalid`). The deployed shops turn it on. |
+| `--signature_max_age_seconds`   | `300`   | How long after `created` a signature without `expires` is accepted. |
 | `--allow_insecure_profile_urls` | `false` | Permit `http` and loopback/private profile URLs when resolving keys. For localhost demos and CI only; it disables SSRF protections and must never be enabled in production.                                        |
 
 When verification fails under enforcement, the server returns the spec's error
-code: `401 signature_missing` / `signature_invalid` / `key_not_found`,
+code: `401 signature_missing` / `signature_invalid` / `key_not_found` /
+`signature_expired` / `signature_replayed`,
 `400 digest_mismatch` / `algorithm_unsupported` / `invalid_profile_url`,
 `424 profile_unreachable`, or `422 profile_malformed`.
 

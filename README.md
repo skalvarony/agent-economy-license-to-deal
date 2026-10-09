@@ -94,7 +94,14 @@ Both end in the same checkout code, order, voucher, payment and ledger events.
 
 With `REQUIRE_SIGNATURES=1` (the default on the server) an unsigned request
 gets `401 signature_missing`, a wrong key `401 signature_invalid`, and a
-profile that is not public https `400 invalid_profile_url`. If the total
+profile that is not public https `400 invalid_profile_url`. Each signature
+also carries `expires` (five minutes after `created`, and never more than
+eight) and a random `nonce`. A signature past its `expires`, made in the
+future, or older than five minutes without `expires` gets `401
+signature_expired`. The same nonce a second time inside its window gets `401
+signature_replayed`, so a copied request is useless. With `REQUIRE_SIGNATURE_NONCE=1`
+(also the default) a signature without a nonce gets `401 signature_invalid`.
+The shop remembers nonces in memory, one process per shop. `scripts/replay-demo.py` shows it: one signed request, sent twice. If the total
 moved since the agent last fetched the checkout, `complete` answers
 `409 requires_consent` and charges nothing. Each agent order records the
 agent's profile, the outcome of the signature check and when it was placed.
@@ -268,6 +275,18 @@ authorises, captures and refunds without moving money). Simulated: the
 catalogue with its prices, ratings and reviews; the payment on the `mock`
 rail (every order and ledger line names its rail);
 the merchant; the agent's decisions until a model is connected.
+
+On the `stripe` rail the shop reads Stripe's fraud check (Radar) on every
+charge and keeps it on the order. Set `AGENT_CARD_TOKEN` to one of Stripe's
+test payment methods (https://docs.stripe.com/testing) to show each case:
+`pm_card_visa` is a normal payment; `pm_card_riskLevelElevated` is sold and
+marked "Fraud check: review" in the console, with a `PAYMENT_RISK_REVIEW`
+ledger line; `pm_card_riskLevelHighest` is authorised, then cancelled by the
+shop (`RISK_HIGHEST`); `pm_card_radarBlock` is blocked by Stripe
+(`RISK_BLOCKED`); `pm_card_threeDSecure2Required` asks the person to confirm
+with the bank, which an agent cannot do (`SHOPPER_ACTION_REQUIRED`). Stripe
+may itself block the highest-risk card, depending on the account's Radar
+settings; then the shop reports `RISK_BLOCKED` instead.
 
 ## Layout
 
