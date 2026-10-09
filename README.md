@@ -103,7 +103,7 @@ with a credit card. License to Deal makes the whole loop work agent-to-shop:
 | 5 "I never bought this" | `/evidence/{order}`: approved vs charged, signature verified, which channel, the quote on a call | Agent → Purchases → Evidence |
 
 Checked by: 394 shop tests, 61 agent tests, 17 console tests, 8 browser
-flows, a 31-step live smoke test, and `eval_live.py`, last run 11/11 with
+flows, a 33-step live smoke test, and `eval_live.py`, last run 11/11 with
 Claude Sonnet 4.5 for $0.63.
 
 ## 6. Technical execution
@@ -152,7 +152,7 @@ Needs [uv](https://docs.astral.sh/uv/). Every start re-seeds the shops.
 scripts/shops.sh start       # REQUIRE_SIGNATURES=1 to turn away unsigned agents (adds the nonce check)
 scripts/agent.sh start       # http://localhost:8190
 scripts/console.sh start     # http://localhost:8195
-python3 scripts/smoke.py     # 31 live checks: buys, books, moves, cancels, refunds, booking fee
+python3 scripts/smoke.py     # 33 live checks: buys, books, moves, cancels, refunds, booking fee
 cd agent && uv run python ../scripts/replay-demo.py http://localhost:8181   # a copied signed request is refused
 scripts/agent.sh stop && scripts/shops.sh stop
 ```

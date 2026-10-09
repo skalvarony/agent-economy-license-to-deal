@@ -203,7 +203,7 @@ your screen and nowhere else.
 
 Locally (needs `uv`, Node 22+): `scripts/shops.sh start`, `scripts/agent.sh
 start` (http://localhost:8190, no login), `scripts/console.sh start`,
-`python3 scripts/smoke.py` runs 31 live checks.
+`python3 scripts/smoke.py` runs 33 live checks.
 Every local start re-seeds.
 
 ## Repo map

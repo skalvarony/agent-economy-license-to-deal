@@ -124,9 +124,12 @@ def main():
           p["cancellation"]["refundability"] == "non_refundable"
           for p in found["c"]), found["c"])
 
-  status, sold_out = open_checkout("a", "thai_massage_90")
-  check("shop a: sold-out deal refused", status == 400
-        and sold_out["messages"][0]["code"] == "OUT_OF_STOCK", sold_out)
+  # Inventory: every option of every shop has codes to sell.
+  for shop in SHOPS:
+    _, stock = call(shop, "GET", "/inventory", merchant=True)
+    short = [r["option_id"] for r in stock if r["codes"]["available"] < 1]
+    check(f"shop {shop}: every option has stock ({len(stock)} options)",
+          stock and not short, short)
 
   # A deal's options are variants, each with its own price.
   spa = next(p for p in found["a"] if p["id"] == "spa_day_two")

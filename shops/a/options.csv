@@ -9,3 +9,7 @@ float_session_60,float_session,60 minutes,An hour floating in a private room.,Pr
 float_session_90,float_session,90 minutes,"A longer float, with tea afterwards.",Private float room|Shower and toiletries|Earplugs|Tea in the lounge,7900,12000
 thai_massage_60,thai_massage,60 minutes,Full-body traditional Thai massage.,Traditional Thai massage|Herbal tea,8500,12000
 thai_massage_90,thai_massage,90 minutes,A longer session with a hot herbal compress.,Traditional Thai massage|Hot herbal compress|Herbal tea,11500,16000
+yoga_morning_class,yoga_morning,Single class,One 60-minute morning class.,60-minute class|Mat and blocks|Tea afterwards,1900,2800
+yoga_morning_brunch,yoga_morning,Class and brunch,"The class, then brunch on the terrace.",60-minute class|Mat and blocks|Brunch on the terrace,2900,4500
+couples_massage_60,couples_massage,60 minutes,"An hour, side by side.",Two 60-minute massages|Choice of oil|Prosecco afterwards,11900,17000
+couples_massage_90,couples_massage,90 minutes,"Ninety minutes, with a hot stone finish.",Two 90-minute massages|Choice of oil|Hot stone finish|Prosecco afterwards,15900,22000

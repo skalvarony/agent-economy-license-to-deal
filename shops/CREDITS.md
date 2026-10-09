@@ -35,6 +35,12 @@ Deal photos come from Wikimedia Commons, resized to 800 px wide. Each is used un
 | C | hot_stone_massage (photo 2) | Daniela | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Massage_at_Witches_Falls_Cottages_(cropped).jpg |
 | C | hot_stone_massage (photo 3) | Daniela | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Massage_at_Witches_Falls_Cottages.jpg |
 | C | beer_spa_two (photo 2) | See source page | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Budapest,_Luk%C3%A1cs_f%C3%BCrd%C5%91,_Thermal_Beer_Spa_Budapest,_7.jpg |
+| A | yoga_morning | SurfGidget | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File%3AYoga_Studio_in_Canoa.jpg |
+| C | salt_cave | SpeedsteR | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File%3AHalotherapy_in_Soligorsk_Belarus.jpg |
+| A | couples_massage | Paradisus Bali | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File%3AYHI_Spa_treatment_room_at_Paradisus_by_Meli%C3%A1_Bali.jpg |
+| B | wine_tasting | Michael Gaylard from Horsham, UK | CC BY 4.0 | https://commons.wikimedia.org/wiki/File%3ACaves_C%C3%A1lem_%2855243161819%29.jpg |
+| B | kayak_tour | flickr user "Truello" = Andy from Pittsburgh, USA | CC BY 2.0 | https://commons.wikimedia.org/wiki/File%3ALow_brace_Youghiogheny_River_Ohiopyle%2C_PA.jpg |
+| C | infrared_sauna | Shixart1985 | CC BY 2.0 | https://commons.wikimedia.org/wiki/File%3ASauna_room_next_to_a_bedroom_in_a_modern_apartment.jpg |
 
 ## Fonts and code
 
