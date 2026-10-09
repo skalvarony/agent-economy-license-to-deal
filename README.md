@@ -75,7 +75,8 @@ verdict, the approval record and the conversation behind it. (3) Back on the
 agent, "move my spa day to Sunday at 12", approve the change; then "cancel
 it", approve: the refund goes back through Stripe and the slot is released.
 (4) Call +1 279 240 6436 and ask for the same; say yes on the call. (5) Try
-to break it: ask for something above $200 (the cap in code refuses), run
+to break it: ask for the full-day spa ($139, above the agent's $120 cap
+in code: refused before it is even proposed), run
 `scripts/replay-demo.py` against a local shop (a copied signed request gets
 `401 signature_replayed`), or pay on the web with `4000 0000 0000 9995`.
 
@@ -188,7 +189,8 @@ Spanish), last run 11/11 with Claude Sonnet 4.5 for $0.63.
   first yes; card and voice approvals carry one-time tokens); the shop's
   Stripe calls carry idempotency keys; `complete` refuses a total that moved
   since the agent last saw it; a replayed signed request is refused.
-- **Caps hold in code.** `AGENT_HARD_CAP` ($200 per purchase) and
+- **Caps hold in code.** `AGENT_HARD_CAP` (per purchase: $200 by default,
+  $120 on the deployed agent so the full-day spa shows the refusal) and
   `AGENT_DAILY_CAP` ($500 per 24 h, from the agent's own record) are checked
   before a proposal is shown and again at the moment of paying, after the
   yes, in `agent/session.py`; the person's own rules (maximum, refundable
