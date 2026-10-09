@@ -125,6 +125,12 @@ TEXTS: dict[str, dict[str, str]] = {
     "en": "{shop} refused the purchase: {message} Nothing was paid.",
     "es": "{shop} ha rechazado la compra: {message} No se ha pagado nada.",
   },
+  "signature_refused": {
+    "en": "{shop} wouldn't accept my signature ({code}): {message} Nothing"
+    " was paid. Ask me again and I'll send a freshly signed request.",
+    "es": "{shop} no ha aceptado mi firma ({code}): {message} No se ha"
+    " pagado nada. Pídemelo otra vez y envío una petición firmada de nuevo.",
+  },
   "bought": {
     "en": "Done. I bought {title} at {shop} and your voucher is ready.",
     "es": "Hecho. He comprado {title} en {shop} y tu voucher está listo.",

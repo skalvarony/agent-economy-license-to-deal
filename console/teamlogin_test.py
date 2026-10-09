@@ -103,7 +103,11 @@ def test_next_stays_on_this_site(client):
 def test_a_forged_or_expired_cookie_is_no_session(client):
   sessions = teamlogin.Sessions(b"key")
   assert sessions.read(sessions.make("ana")) == "ana"
-  assert sessions.read(sessions.make("ana")[:-1] + "0") is None
+  cookie = sessions.make("ana")
+  # Flip the last character of the signature: one in sixteen times it is
+  # already a 0, so "0" would not have forged anything.
+  forged = cookie[:-1] + ("1" if cookie[-1] == "0" else "0")
+  assert sessions.read(forged) is None
   assert sessions.read("ana|1|deadbeef") is None
   assert teamlogin.Sessions(b"other").read(sessions.make("ana")) is None
 

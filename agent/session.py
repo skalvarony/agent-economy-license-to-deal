@@ -1478,6 +1478,15 @@ class Session:
         return
       self._close(proposal, "failed", method)
       self._record("stopped", proposal, why=refusal.code, method=method)
+      if refusal.code.startswith("signature_"):
+        # The shop would not take the agent's signature (expired, replayed,
+        # unknown key). Nothing was charged; a new request signs afresh.
+        self._note(f"{shop.name} refused the signature: {refusal.message}")
+        self._say(
+          say("signature_refused", self.lang, shop=shop.name,
+              code=refusal.code, message=refusal.message)
+        )
+        return
       self._note(f"{shop.name} refused the purchase: {refusal.message}")
       self._say(
         say("refused", self.lang, shop=shop.name, message=refusal.message)

@@ -155,7 +155,8 @@ class StripeRail:
       )
     self.http = stripe_http()
     # What Radar said at the lock, by PaymentIntent, so `assess` needs no
-    # second call to Stripe for a payment this instance locked.
+    # second call to Stripe for a payment this instance locked. Each entry
+    # is read once and dropped.
     self._risk: dict[str, dict[str, Any] | None] = {}
 
   @property
@@ -263,13 +264,18 @@ class StripeRail:
       await self._call("POST", f"/payment_intents/{payment_id}/cancel")
 
   async def assess(self, payment_id: str) -> dict[str, Any] | None:
-    """Return Radar's verdict on the charge, as read when it was locked."""
-    if payment_id not in self._risk:
-      intent = await self._call(
-        "GET", f"/payment_intents/{payment_id}?expand[]=latest_charge"
-      )
-      self._risk[payment_id] = _risk(intent.get("latest_charge"))
-    return self._risk[payment_id]
+    """Return Radar's verdict on the charge, as read when it was locked.
+
+    The verdict is read once: the checkout asks right after the lock, and
+    `inspect` reads it from Stripe again, so forgetting it here keeps the
+    cache from growing by one entry per payment for the life of the process.
+    """
+    if payment_id in self._risk:
+      return self._risk.pop(payment_id)
+    intent = await self._call(
+      "GET", f"/payment_intents/{payment_id}?expand[]=latest_charge"
+    )
+    return _risk(intent.get("latest_charge"))
 
   async def capture(self, payment_id: str) -> None:
     """Take the authorised amount."""

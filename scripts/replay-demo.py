@@ -3,7 +3,8 @@
 
 Signs one catalog search the way the agent does (its own signing code, a
 throwaway key), sends it to a local shop, then sends the identical bytes again.
-The shop must answer the first normally and the second 401 signature_replayed.
+The shop must answer the first normally and the second 401 signature_replayed;
+the exit code says whether it did, so a deploy can run it as a check.
 
 Start the shop with signatures on first:  REQUIRE_SIGNATURES=1 scripts/shops.sh start
 Run it from the agent folder (it needs httpx and cryptography):
@@ -59,6 +60,13 @@ next(RequestSigner(key, "demo").auth_flow(request))  # adds the signature
 print("Signature-Input:", request.headers["Signature-Input"])
 
 with httpx.Client() as client:
-  for attempt in ("first send    ", "identical copy"):
-    answer = client.send(request)
-    print(f"{attempt}: {answer.status_code} {answer.text[:110]}")
+  first = client.send(request)
+  print(f"first send    : {first.status_code} {first.text[:110]}")
+  copy = client.send(request)
+  print(f"identical copy: {copy.status_code} {copy.text[:110]}")
+
+# Also a check for the deploy: exit 1 when the copy was not refused.
+ok = first.status_code == 200 and copy.status_code == 401
+ok = ok and "signature_replayed" in copy.text
+print("replay refused" if ok else "REPLAY NOT REFUSED")
+sys.exit(0 if ok else 1)

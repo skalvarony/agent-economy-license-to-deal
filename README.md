@@ -26,8 +26,8 @@ python3 scripts/smoke.py     # 28 live checks: buys, books, moves, cancels, refu
 scripts/agent.sh stop && scripts/shops.sh stop
 ```
 
-Tests: `cd rest/python/server && uv run pytest` (360), `cd agent && uv run
-pytest` (49), `cd console && uv run pytest` (16). Browser tests in
+Tests: `cd rest/python/server && uv run pytest` (394), `cd agent && uv run
+pytest` (58), `cd console && uv run pytest` (17). Browser tests in
 `tests-e2e/` (Node 22.12+, shops and agent running): `npm install && npx
 playwright install chromium` once, then `npm test` (five shop flows) and
 `npm run test:agent` (three agent flows). They use exact checks and need no

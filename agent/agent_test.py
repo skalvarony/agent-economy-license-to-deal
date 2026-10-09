@@ -607,6 +607,21 @@ def test_a_three_d_secure_refusal_reaches_the_person_in_plain_words(
   assert text.endswith("Nothing was paid.")
 
 
+def test_a_refused_signature_is_said_in_clear_words(session, shops):
+  """A 401 signature_* from the shop names the signature, not the card."""
+  run(session.say(REQUEST))
+  proposal = proposal_of(session)
+  shops[0].refusal = ShopError(
+    401, "signature_expired", "Signature has expired"
+  )
+  events = run(session.approve(proposal["id"]))
+  assert not shops[0].completed
+  assert proposal["status"] == "failed"
+  text = events[-1]["text"]
+  assert "wouldn't accept my signature (signature_expired)" in text
+  assert "Nothing was paid." in text
+
+
 def test_evidence_tells_what_the_fraud_check_said(session, shops):
   run(session.say(REQUEST))
   proposal = proposal_of(session)

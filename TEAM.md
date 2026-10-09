@@ -109,7 +109,7 @@ then update the connector in ChatGPT/Claude.
 | landing | `deploy/landing/` (static) | via Caddy | — |
 
 Stack: Python 3.12 + FastAPI + `uv`, vanilla JS/CSS front ends, Playwright
-for browser tests, Docker Compose. Tests: 360 (shops) + 49 (agent) + 9 +
+for browser tests, Docker Compose. Tests: 394 (shops) + 58 (agent) + 10 +
 7 (console, login).
 
 ## What the system does
